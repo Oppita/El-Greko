@@ -92,8 +92,8 @@ const App: React.FC = () => {
                 onClick={handleSaveProject}
                 disabled={isSaving}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${saveSuccess
-                    ? 'bg-green-600 text-white'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white'
                   }`}
               >
                 {isSaving ? (

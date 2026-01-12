@@ -1149,53 +1149,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         }
     };
 
-    const processEvolution = async (input: { type: 'pdf' | 'text', content: string }) => {
+    const handleEvolution = async (file?: File) => {
         setIsEvolving(true);
         setEvolutionError(null);
         try {
-            const updatedProject = await updateProjectWithNewData(data, input);
-            onUpdate(updatedProject); // Update parent state
+            let input: { type: 'pdf' | 'text' | 'image', content: string } = { type: 'text', content: '' };
 
-            // NEW: Set result for display instead of closing
-            const newLog = updatedProject.evolutionHistory?.[0];
-            if (newLog) {
-                setEvolutionResult(newLog);
+            if (evolutionTab === 'text') {
+                if (!evolutionTextInput.trim()) throw new Error("Por favor ingresa un texto.");
+                input = { type: 'text', content: evolutionTextInput };
+            } else if (file) {
+                const reader = new FileReader();
+                const content = await new Promise<string>((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+                // Remove prefix (data:application/pdf;base64, etc)
+                const base64Content = content.split(',')[1];
+                input = {
+                    type: evolutionTab === 'pdf' ? 'pdf' : 'image',
+                    content: base64Content
+                };
             } else {
-                setIsEvolutionModalOpen(false); // Fallback
+                throw new Error("Por favor selecciona un archivo.");
             }
 
-            // Reset local analysis states that depend on old data to force re-check
-            setFinancialAnalysisResult(null);
-            setMilestones(updatedProject.milestones);
-            setResourceInventory(updatedProject.resourceInventory);
-            if (updatedProject.contractorProfile) {
-                setContractorProfile(prev => ({ ...prev, ...updatedProject.contractorProfile }));
+            const updatedData = await updateProjectWithNewData(data, input);
+            onUpdate(updatedData);
+
+            if (updatedData.evolutionHistory && updatedData.evolutionHistory.length > 0) {
+                setEvolutionResult(updatedData.evolutionHistory[0]);
             }
-        } catch (error: any) {
-            setEvolutionError(error.message || "Error al evolucionar el proyecto.");
+
+            setIsEvolutionModalOpen(false);
+        } catch (e: any) {
+            setEvolutionError(e.message);
         } finally {
             setIsEvolving(false);
-            setEvolutionTextInput(''); // clear text input
         }
-    };
-
-    const handleEvolutionPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                const base64 = (event.target?.result as string)?.split(',')[1];
-                if (base64) {
-                    await processEvolution({ type: 'pdf', content: base64 });
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleEvolutionTextSubmit = async () => {
-        if (!evolutionTextInput.trim()) return;
-        await processEvolution({ type: 'text', content: evolutionTextInput });
     };
 
     const closeEvolutionModal = () => {
@@ -2411,211 +2403,86 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                         ) : (<div className="text-center py-20 text-slate-400">No se pudo generar el análisis detallado.</div>)}
                     </BaseModal>
 
+                    {/* MODAL EVOLUCIONAR */}
+                    <BaseModal isOpen={isEvolutionModalOpen} onClose={() => setIsEvolutionModalOpen(false)} title="Evolucionar Proyecto (Ingesta de Nueva Evidencia)" maxWidth="max-w-4xl">
+                        <div className="space-y-6">
+                            <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 flex items-start gap-4">
+                                <div className="bg-blue-600 text-white p-3 rounded-full shrink-0"><GitMerge size={24} /></div>
+                                <div>
+                                    <h4 className="font-bold text-blue-900 text-lg">Actualización Forense Inteligente</h4>
+                                    <p className="text-sm text-blue-800 leading-relaxed">
+                                        El sistema comparará la nueva evidencia contra la línea base del proyecto.
+                                        Detectará automáticamente discrepancias en <strong>Presupuesto, Avance Físico y Riesgos</strong>.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 bg-slate-100 p-1.5 rounded-xl">
+                                <button onClick={() => setEvolutionTab('pdf')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'pdf' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><FileText size={16} /> Reporte PDF</button>
+                                <button onClick={() => setEvolutionTab('image')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'image' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><Image size={16} /> Evidencia Visual</button>
+                                <button onClick={() => setEvolutionTab('text')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'text' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><MessageSquare size={16} /> Texto / Email</button>
+                            </div>
+
+                            <div className="bg-white rounded-xl border-2 border-dashed border-slate-300 min-h-[200px] flex flex-col items-center justify-center p-8 transition-all hover:border-blue-400 hover:bg-blue-50/10 group">
+                                {isEvolving ? (
+                                    <div className="text-center">
+                                        <Loader2 size={48} className="text-blue-600 animate-spin mb-4 mx-auto" />
+                                        <h5 className="font-bold text-slate-700 animate-pulse">Analizando Evidencia...</h5>
+                                        <p className="text-xs text-slate-500 mt-2">Auditando impacto en cronograma y presupuesto.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {evolutionTab === 'pdf' && (
+                                            <label className="text-center cursor-pointer w-full h-full flex flex-col items-center justify-center">
+                                                <UploadCloud size={48} className="text-slate-300 mb-4 group-hover:text-blue-500 transition-colors" />
+                                                <span className="font-bold text-slate-600 mb-1">Arrastra tu reporte PDF aquí</span>
+                                                <span className="text-xs text-slate-400">o haz clic para explorar</span>
+                                                <input type="file" accept="application/pdf" className="hidden" onChange={(e) => {
+                                                    if (e.target.files?.[0]) handleEvolution(e.target.files[0]);
+                                                }} />
+                                            </label>
+                                        )}
+                                        {evolutionTab === 'image' && (
+                                            <label className="text-center cursor-pointer w-full h-full flex flex-col items-center justify-center">
+                                                <Camera size={48} className="text-slate-300 mb-4 group-hover:text-blue-500 transition-colors" />
+                                                <span className="font-bold text-slate-600 mb-1">Sube fotos de obra o bitácoras</span>
+                                                <span className="text-xs text-slate-400">Formatos: JPG, PNG</span>
+                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                                    if (e.target.files?.[0]) handleEvolution(e.target.files[0]);
+                                                }} />
+                                            </label>
+                                        )}
+                                        {evolutionTab === 'text' && (
+                                            <div className="w-full">
+                                                <textarea
+                                                    value={evolutionTextInput}
+                                                    onChange={(e) => setEvolutionTextInput(e.target.value)}
+                                                    placeholder="Pega aquí el correo del interventor, reporte de WhatsApp o notas de campo..."
+                                                    className="w-full h-40 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
+                                                ></textarea>
+                                                <button
+                                                    onClick={() => handleEvolution()}
+                                                    disabled={!evolutionTextInput.trim()}
+                                                    className="w-full mt-4 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Sparkles size={16} /> Procesar Texto
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {evolutionError && (
+                                <div className="bg-red-50 p-4 rounded-xl border border-red-200 flex items-center gap-3 text-red-700 text-sm font-bold">
+                                    <AlertCircle size={20} /> {evolutionError}
+                                </div>
+                            )}
+                        </div>
+                    </BaseModal>
+
                 </div>
             </div>
         </div>
-
-    const handleEvolution = async (file?: File) => {
-        setIsEvolving(true);
-        setEvolutionError(null);
-        try {
-            let input: { type: 'pdf' | 'text' | 'image', content: string } = { type: 'text', content: '' };
-
-            if (evolutionTab === 'text') {
-                if (!evolutionTextInput.trim()) throw new Error("Por favor ingresa un texto.");
-                input = { type: 'text', content: evolutionTextInput };
-            } else if (file) {
-                const reader = new FileReader();
-                const content = await new Promise<string>((resolve, reject) => {
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-                // Remove prefix (data:application/pdf;base64, etc)
-                const base64Content = content.split(',')[1];
-                input = {
-                    type: evolutionTab === 'pdf' ? 'pdf' : 'image',
-                    content: base64Content
-                };
-            } else {
-                throw new Error("Por favor selecciona un archivo.");
-            }
-
-            const updatedData = await updateProjectWithNewData(data, input);
-            onUpdate(updatedData);
-
-            // Show result
-            if (updatedData.evolutionHistory && updatedData.evolutionHistory.length > 0) {
-                setEvolutionResult(updatedData.evolutionHistory[0]);
-            }
-
-            setIsEvolutionModalOpen(false); // Close modal on success (or keep open to show result?)
-            // Let's keep it open to show success or auto-close? 
-            // Better to close and let user see the timeline update as per original plan "Verify the dashboard updates".
-            // But user might want to see the specific result. 
-            // Let's close for now to be simple, the timeline is right there.
-
-        } catch (e: any) {
-            setEvolutionError(e.message);
-        } finally {
-            setIsEvolving(false);
-        }
-    };
-
-    return (
-        <div className="min-h-screen bg-slate-50 font-roboto text-slate-800 pb-20">
-            {/* Header */}
-            <header className="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
-                <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-600 p-2 rounded-lg"><Activity size={24} /></div>
-                        <div>
-                            <h1 className="font-black text-xl tracking-tight">EL GREKO <span className="text-blue-400">AI</span></h1>
-                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Plataforma de Auditoría Forense</p>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <main className="container mx-auto px-4 py-8">
-                {/* Navigation Tabs */}
-                <div className="flex overflow-x-auto gap-2 mb-8 pb-2 custom-scrollbar">
-                    {[
-                        { id: 'overview', label: 'Tablero de Control', icon: <LayoutDashboardIcon size={16} /> },
-                        { id: 'execution', label: 'Centro de Ejecución', icon: <Pickaxe size={16} /> },
-                        { id: 'financial', label: 'Inteligencia Financiera', icon: <Coins size={16} /> },
-                        { id: 'risks', label: 'Matriz de Riesgos', icon: <ShieldAlert size={16} /> },
-                        { id: 'contractor', label: 'Auditoría Contratista', icon: <BriefcaseIcon size={16} /> },
-                        { id: 'pmbok', label: 'Estándar PMBOK 7', icon: <BookOpen size={16} /> },
-                        { id: 'photos', label: 'Evidencia Visual', icon: <Camera size={16} /> },
-                        { id: 'assistant', label: 'Asistente Virtual', icon: <Bot size={16} /> },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg shadow-slate-200 scale-105' : 'bg-white text-slate-500 hover:bg-slate-100 border border-gray-200'}`}
-                        >
-                            {tab.icon}
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* MODAL EVOLUCIONAR */}
-                <BaseModal isOpen={isEvolutionModalOpen} onClose={() => setIsEvolutionModalOpen(false)} title="Evolucionar Proyecto (Ingesta de Nueva Evidencia)" maxWidth="max-w-4xl">
-                    <div className="space-y-6">
-                        <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 flex items-start gap-4">
-                            <div className="bg-blue-600 text-white p-3 rounded-full shrink-0"><GitMerge size={24} /></div>
-                            <div>
-                                <h4 className="font-bold text-blue-900 text-lg">Actualización Forense Inteligente</h4>
-                                <p className="text-sm text-blue-800 leading-relaxed">
-                                    El sistema comparará la nueva evidencia contra la línea base del proyecto.
-                                    Detectará automáticamente discrepancias en <strong>Presupuesto, Avance Físico y Riesgos</strong>.
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Input Type Tabs */}
-                        <div className="flex gap-2 bg-slate-100 p-1.5 rounded-xl">
-                            <button onClick={() => setEvolutionTab('pdf')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'pdf' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><FileText size={16} /> Reporte PDF</button>
-                            <button onClick={() => setEvolutionTab('image')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'image' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><Image size={16} /> Evidencia Visual</button>
-                            <button onClick={() => setEvolutionTab('text')} className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${evolutionTab === 'text' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}><MessageSquare size={16} /> Texto / Email</button>
-                        </div>
-
-                        {/* Input Area */}
-                        <div className="bg-white rounded-xl border-2 border-dashed border-slate-300 min-h-[200px] flex flex-col items-center justify-center p-8 transition-all hover:border-blue-400 hover:bg-blue-50/10 group">
-                            {isEvolving ? (
-                                <div className="text-center">
-                                    <Loader2 size={48} className="text-blue-600 animate-spin mb-4 mx-auto" />
-                                    <h5 className="font-bold text-slate-700 animate-pulse">Analizando Evidencia...</h5>
-                                    <p className="text-xs text-slate-500 mt-2">Auditando impacto en cronograma y presupuesto.</p>
-                                </div>
-                            ) : (
-                                <>
-                                    {evolutionTab === 'pdf' && (
-                                        <label className="text-center cursor-pointer w-full h-full flex flex-col items-center justify-center">
-                                            <UploadCloud size={48} className="text-slate-300 mb-4 group-hover:text-blue-500 transition-colors" />
-                                            <span className="font-bold text-slate-600 mb-1">Arrastra tu reporte PDF aquí</span>
-                                            <span className="text-xs text-slate-400">o haz clic para explorar</span>
-                                            <input type="file" accept="application/pdf" className="hidden" onChange={(e) => {
-                                                if (e.target.files?.[0]) handleEvolution(e.target.files[0]);
-                                            }} />
-                                        </label>
-                                    )}
-                                    {evolutionTab === 'image' && (
-                                        <label className="text-center cursor-pointer w-full h-full flex flex-col items-center justify-center">
-                                            <Camera size={48} className="text-slate-300 mb-4 group-hover:text-blue-500 transition-colors" />
-                                            <span className="font-bold text-slate-600 mb-1">Sube fotos de obra o bitácoras</span>
-                                            <span className="text-xs text-slate-400">Formatos: JPG, PNG</span>
-                                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                                if (e.target.files?.[0]) handleEvolution(e.target.files[0]);
-                                            }} />
-                                        </label>
-                                    )}
-                                    {evolutionTab === 'text' && (
-                                        <div className="w-full">
-                                            <textarea
-                                                value={evolutionTextInput}
-                                                onChange={(e) => setEvolutionTextInput(e.target.value)}
-                                                placeholder="Pega aquí el correo del interventor, reporte de WhatsApp o notas de campo..."
-                                                className="w-full h-40 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
-                                            ></textarea>
-                                            <button
-                                                onClick={() => handleEvolution()}
-                                                disabled={!evolutionTextInput.trim()}
-                                                className="w-full mt-4 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Sparkles size={16} /> Procesar Texto
-                                            </button>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-
-                        {evolutionError && (
-                            <div className="bg-red-50 p-4 rounded-xl border border-red-200 flex items-center gap-3 text-red-700 text-sm font-bold">
-                                <AlertCircle size={20} /> {evolutionError}
-                            </div>
-                        )}
-                    </div>
-                </BaseModal>
-
-                {/* Dashboard Tab Content */}
-                {activeTab === 'overview' && (
-                    <div className="space-y-6 animate-fade-in pb-10">
-                        <RealTimeHealthTicker metrics={{
-                            cpi: calculatedMetrics.cpi,
-                            spi: calculatedMetrics.spi,
-                            healthScore: data.kpis.financialHealth === 'Saludable' ? 90 : 45
-                        }} />
-
-                        <ExecutionStatusWidget
-                            startDate={data.startDate}
-                            endDate={data.endDate}
-                            progress={data.progressPercentage}
-                            financialProgress={calculatedMetrics.financialProgress}
-                            totalBudget={data.totalBudget}
-                        />
-                    </div>
-                )}
-
-                {/* ... Main Content Rendering Loop ... */}
-                {/* This part was already in the file, but I replaced the whole return to insert the header and modal properly. 
-                    I need to be careful to not duplicate the content rendering logic.
-                    Actually, checking the original file, the return statement started at line 2417.
-                    And it included the activeTab logic.
-                    Wait, if I replace the return, I need to make sure I include ALL the tab rendering logic.
-                    The original file line 2309-2418 contained the tab rendering.
-                    
-                    Wait, my replace block replaces *everything* from 2418 to end of file?
-                    No, line 2418 in original file is just `};`.
-                    Wait, I should check the file content again.
-                    Line 2417 is `    );`.
-                    Line 2418 is `};`.
-                    
-                    The `Dashboard` component ends at 2418.
-                    The `return` statement of `Dashboard` starts way earlier.
-                    
-                */}
-
+    );
+};
