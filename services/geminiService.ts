@@ -1706,3 +1706,58 @@ export const analyzeValueEngineering = async (projectData: ProjectData): Promise
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Value Engineering Analysis");
 };
+
+// --- SUPABASE PERSISTENCE FUNCTIONS ---
+import { supabase } from './supabaseClient';
+
+export interface SavedProject {
+    id: string;
+    project_name: string;
+    contract_id: string | null;
+    full_data: ProjectData;
+    created_at: string;
+}
+
+export const saveProjectToSupabase = async (data: ProjectData): Promise<{ success: boolean; id?: string; error?: string }> => {
+    try {
+        const { data: result, error } = await supabase
+            .from('projects')
+            .insert({
+                project_name: data.projectName || 'Proyecto Sin Nombre',
+                contract_id: data.contractId || null,
+                full_data: data
+            })
+            .select('id')
+            .single();
+
+        if (error) {
+            console.error('Supabase save error:', error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true, id: result?.id };
+    } catch (err: any) {
+        console.error('Error saving to Supabase:', err);
+        return { success: false, error: err.message || 'Error desconocido' };
+    }
+};
+
+export const getRecentProjects = async (limit: number = 10): Promise<SavedProject[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('id, project_name, contract_id, full_data, created_at')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.error('Supabase fetch error:', error);
+            return [];
+        }
+
+        return (data || []) as SavedProject[];
+    } catch (err) {
+        console.error('Error fetching projects:', err);
+        return [];
+    }
+};
