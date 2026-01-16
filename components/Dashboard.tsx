@@ -773,7 +773,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
     const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
 
     // MACROECONOMIC STATE
-    const [macroData, setMacroData] = useState<MacroeconomicData>(data.macroeconomicData || INITIAL_PROJECT_DATA.macroeconomicData);
+    const [macroData, setMacroData] = useState<MacroeconomicData>({
+        ...INITIAL_PROJECT_DATA.macroeconomicData,
+        ...(data.macroeconomicData || {})
+    });
 
     useEffect(() => { if (milestones.length === 0 && data.milestones) { setMilestones(data.milestones); } }, [data.milestones]);
     useEffect(() => { if (!resourceInventory.personnel?.length && !resourceInventory.machinery?.length && data.resourceInventory) { setResourceInventory(data.resourceInventory) } }, [data.resourceInventory]);
