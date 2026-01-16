@@ -876,57 +876,13 @@ export const analyzeCapexOpexDeep = async (projectData: ProjectData): Promise<Ca
         SALIDA (JSON Strict - CapexOpexDeepAnalysis Interface):
         `;
 
-        const response = await generateWithFallback({
+        const response = await generateFast({
             contents: prompt,
             config: {
                 temperature: 0.2,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        capex: {
-                            type: Type.OBJECT,
-                            properties: {
-                                total: { type: Type.NUMBER },
-                                analysis: { type: Type.STRING },
-                                breakdown: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            item: { type: Type.STRING },
-                                            cost: { type: Type.NUMBER },
-                                            justification: { type: Type.STRING }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        opex: {
-                            type: Type.OBJECT,
-                            properties: {
-                                total: { type: Type.NUMBER },
-                                analysis: { type: Type.STRING },
-                                breakdown: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            item: { type: Type.STRING },
-                                            cost: { type: Type.NUMBER },
-                                            justification: { type: Type.STRING }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        efficiencyVerdict: { type: Type.STRING, enum: ['Equilibrado', 'Alto OPEX (Alerta)', 'Bajo CAPEX (Riesgo Calidad)'] },
-                        efficiencyRationale: { type: Type.STRING }
-                    },
-                    required: ["capex", "opex", "efficiencyVerdict", "efficiencyRationale"]
-                }
+                responseMimeType: "application/json"
             }
-        });
+        }, 60000);
 
         if (response.text) {
             const cleaned = cleanJsonString(response.text);
@@ -1190,7 +1146,7 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
     Lista de principios: Stewardship, Team, Stakeholders, Value, Systems Thinking, Leadership, Tailoring, Quality, Complexity, Risk, Adaptability, Change.
     `;
 
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
@@ -1201,7 +1157,7 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
 
 export const analyzePMBOKPrincipleDeep = async (projectData: ProjectData, principleName: string): Promise<PMBOKDeepAnalysis> => {
     const prompt = `Deep dive analysis for PMBOK Principle: ${principleName}. Project: ${projectData.projectName}. Output JSON matching PMBOKDeepAnalysis interface.`;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
@@ -1218,7 +1174,7 @@ export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData:
     
     Genera JSON con: rootCause, legalFramework (Leyes Colombia), financialImpactEstimate, strategicActions (array strings), probabilityOfResolution (number).
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
@@ -1248,7 +1204,7 @@ export const analyzeResourceSufficiency = async (projectData: ProjectData): Prom
 
 export const analyzeFinancialProtectionDeep = async (projectData: ProjectData): Promise<FinancialProtectionDeepAnalysis> => {
     const prompt = `Analiza la protección financiera (Seguros) del proyecto ${projectData.projectName}. Pólizas: ${JSON.stringify(projectData.insurancePolicies)}. Output JSON matching FinancialProtectionDeepAnalysis interface.`;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
@@ -1282,81 +1238,13 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
         sensitivityAnalysis: [{scenario, impactOnEAC, impactOnTir, mitigationStrategy}]
     }
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: {
             temperature: 0.2,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    healthScore: { type: Type.NUMBER },
-                    diagnosis: { type: Type.STRING },
-                    forecast: {
-                        type: Type.OBJECT,
-                        properties: {
-                            eac: { type: Type.NUMBER },
-                            vac: { type: Type.NUMBER },
-                            projectedStatus: { type: Type.STRING, enum: ['Superávit', 'Déficit', 'Equilibrio'] }
-                        }
-                    },
-                    concatenationAnalysis: {
-                        type: Type.OBJECT,
-                        properties: {
-                            budgetVsExecutionGap: { type: Type.STRING },
-                            flaggedDiscrepancies: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        activityName: { type: Type.STRING },
-                                        budgetedAmount: { type: Type.NUMBER },
-                                        executionCost: { type: Type.NUMBER },
-                                        variance: { type: Type.STRING }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    optimizationStrategies: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                title: { type: Type.STRING },
-                                impact: { type: Type.STRING },
-                                action: { type: Type.STRING }
-                            }
-                        }
-                    },
-                    riskItems: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                item: { type: Type.STRING },
-                                riskLevel: { type: Type.STRING },
-                                reason: { type: Type.STRING }
-                            }
-                        }
-                    },
-                    sensitivityAnalysis: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                scenario: { type: Type.STRING },
-                                impactOnEAC: { type: Type.NUMBER },
-                                impactOnTir: { type: Type.NUMBER },
-                                mitigationStrategy: { type: Type.STRING }
-                            }
-                        }
-                    }
-                },
-                required: ["healthScore", "diagnosis", "forecast", "concatenationAnalysis", "optimizationStrategies", "riskItems", "sensitivityAnalysis"]
-            }
+            responseMimeType: "application/json"
         }
-    });
+    }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Financial Deep Analysis");
 };
@@ -1420,30 +1308,13 @@ export const analyzeContractorRisk = async (projectData: ProjectData): Promise<C
         SALIDA JSON (Strict Schema):
         `;
 
-        const response = await generateWithFallback({
+        const response = await generateFast({
             contents: prompt,
             config: {
                 temperature: 0.2,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        name: { type: Type.STRING },
-                        nit: { type: Type.STRING },
-                        suitabilityScore: { type: Type.NUMBER },
-                        financialHealth: { type: Type.STRING },
-                        redFlags: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING }
-                        },
-                        disbursementRisk: { type: Type.STRING },
-                        disbursementRationale: { type: Type.STRING },
-                        summary: { type: Type.STRING }
-                    },
-                    required: ["suitabilityScore", "financialHealth", "redFlags", "disbursementRisk", "disbursementRationale", "summary"]
-                }
+                responseMimeType: "application/json"
             }
-        });
+        }, 60000);
 
         if (response.text) {
             const cleaned = cleanJsonString(response.text);
@@ -1534,10 +1405,10 @@ export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<C
         "holisticRecommendations": string[]
     }
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json", temperature: 0.3 }
-    });
+    }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Corrective Deep Analysis");
 };
@@ -1608,10 +1479,10 @@ export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<Kn
         "criticalDataGaps": [{ "gap": string, "criticality": "Alta" | "Media", "impact": string, "actionPlan": string }]
     }
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json", temperature: 0.3 }
-    });
+    }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Knowledge Analysis");
 };
@@ -1658,10 +1529,10 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
         "actionableRecommendations": string[]
     }
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json", temperature: 0.3 }
-    });
+    }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Management Analysis");
 };
@@ -1696,13 +1567,13 @@ export const analyzeValueEngineering = async (projectData: ProjectData): Promise
       }
     ]
     `;
-    const response = await generateWithFallback({
+    const response = await generateFast({
         contents: prompt,
         config: {
             temperature: 0.2,
             responseMimeType: "application/json"
         }
-    });
+    }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Value Engineering Analysis");
 };
@@ -1719,6 +1590,9 @@ export interface SavedProject {
 }
 
 export const saveProjectToSupabase = async (data: ProjectData): Promise<{ success: boolean; id?: string; error?: string }> => {
+    if (!supabase) {
+        return { success: false, error: 'Supabase no está configurado localmente.' };
+    }
     try {
         const { data: result, error } = await supabase
             .from('projects')
@@ -1743,6 +1617,9 @@ export const saveProjectToSupabase = async (data: ProjectData): Promise<{ succes
 };
 
 export const getRecentProjects = async (limit: number = 10): Promise<SavedProject[]> => {
+    if (!supabase) {
+        return [];
+    }
     try {
         const { data, error } = await supabase
             .from('projects')
