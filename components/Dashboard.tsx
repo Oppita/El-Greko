@@ -63,7 +63,7 @@ import {
     CalendarDays,
     MoreHorizontal
 } from 'lucide-react';
-import { ProjectData, ChatMessage, RiskItem, Bottleneck, ProjectMilestone, GrekoAction, PMBOKPrinciple, PMBOKDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, FinancialProtectionDeepAnalysis, ResourceInventory, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, Personnel, Machinery, Equipment, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, EvolutionLog, CapexOpexDeepAnalysis, ConvergenceMetrics, ValueEngineeringAction } from '../types';
+import { ProjectData, ChatMessage, RiskItem, Bottleneck, ProjectMilestone, GrekoAction, PMBOKPrinciple, PMBOKDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, FinancialProtectionDeepAnalysis, ResourceInventory, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, Personnel, Machinery, Equipment, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, EvolutionLog, CapexOpexDeepAnalysis, ConvergenceMetrics, ValueEngineeringAction, MacroeconomicData, INITIAL_PROJECT_DATA } from '../types';
 import { askProjectQuestion, generateMitigationSuggestion, analyzePOTAlignment, analyzeGrekoCronos, analyzePMBOK7, analyzePMBOKPrincipleDeep, analyzeBottleneckDeep, generateAdministrativeDocument, analyzeResourceSufficiency, analyzeFinancialProtectionDeep, analyzeFinancialDeep, analyzeContractorRisk, analyzeCorrectiveDeep, analyzeCriticalPath, analyzeActivityDeep, analyzeKnowledgeDeep, analyzeManagementDeep, searchProjectInfo, updateProjectWithNewData, analyzeCapexOpexDeep } from '../services/geminiService';
 
 interface DashboardProps {
@@ -678,7 +678,7 @@ const ExecutionCenter: React.FC<ExecutionCenterProps> = ({
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'contractor' | 'execution' | 'financial' | 'risks' | 'pmbok' | 'photos' | 'assistant'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'contractor' | 'execution' | 'financial' | 'risks' | 'pmbok'>('overview');
 
     const [milestones, setMilestones] = useState<ProjectMilestone[]>(data.milestones || []);
 
@@ -751,6 +751,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
     const [montecarloData, setMontecarloData] = useState<any[]>([]);
     const [montecarloProbability, setMontecarloProbability] = useState<number>(0);
     const [montecarloStats, setMontecarloStats] = useState({ probSuccess: 0, probFailure: 0, volatility: 0, iterations: 1000 });
+    const [montecarloResults, setMontecarloResults] = useState<{ distribution: any[], p10: number, p50: number, p90: number } | null>(null);
 
     const [contractorProfile, setContractorProfile] = useState<ContractorProfile | null>(data.contractorProfile || null);
     const [isAnalyzingContractor, setIsAnalyzingContractor] = useState(false);
@@ -770,6 +771,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
     // NEW: Evolution Result & Timeline State
     const [evolutionResult, setEvolutionResult] = useState<EvolutionLog | null>(null);
     const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
+
+    // MACROECONOMIC STATE
+    const [macroData, setMacroData] = useState<MacroeconomicData>(data.macroeconomicData || INITIAL_PROJECT_DATA.macroeconomicData);
 
     useEffect(() => { if (milestones.length === 0 && data.milestones) { setMilestones(data.milestones); } }, [data.milestones]);
     useEffect(() => { if (!resourceInventory.personnel?.length && !resourceInventory.machinery?.length && data.resourceInventory) { setResourceInventory(data.resourceInventory) } }, [data.resourceInventory]);
@@ -911,14 +915,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
     }, [data.risks]);
 
     // STOCHASTIC MONTE CARLO SIMULATION
-    // Generates 1,000 iterations to predict future costs based on risk volatility
+    // Generates 10,000 iterations to predict future costs based on risk volatility
     const runMontecarlo = () => {
         setIsMontecarloOpen(true);
 
-        const iterations = 1000;
+        const iterations = 10000;
         const monthsToProject = 12;
         const currentCost = calculatedMetrics.actualCost;
         const totalBudget = data.totalBudget;
+
+        // MACRO IMPACTS
+        const annualInflation = macroData.inflationRate / 100;
+        const monthlyInflation = Math.pow(1 + annualInflation, 1 / 12) - 1;
+        const monthlyInvestmentReturn = Math.pow(1 + (macroData.investmentReturn / 100), 1 / 12) - 1;
+
+        // TRM Impact (Assuming 20% exposure to currency fluctuation)
+        // Base TRM is set to 3900 COP/USD as a reference
+        const trmBase = 3900;
+        const trmExposure = 0.20;
+        const trmAdjustment = 1 + (trmExposure * (macroData.forwardRate / trmBase - 1));
 
         // Volatility Factor
         const baseVolatility = 0.05; // 5% base
@@ -934,13 +949,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             let accumulatedCost = currentCost;
 
             for (let m = 1; m <= monthsToProject; m++) {
+                // Box-Muller transform for normal distribution
                 const u1 = Math.random();
                 const u2 = Math.random();
                 const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
 
                 const shock = monthlyBurn * volatility * z;
-                // Monthly cost cannot be negative, but can be 0
-                const monthlyStep = Math.max(0, monthlyBurn + shock);
+                // Monthly cost adjusted by inflation and TRM, then buffered by investment returns
+                const inflationAdjustment = Math.pow(1 + monthlyInflation, m);
+                const investmentBuffer = Math.pow(1 + monthlyInvestmentReturn, m);
+
+                const monthlyStep = Math.max(0, (monthlyBurn + shock) * inflationAdjustment * trmAdjustment) / investmentBuffer;
                 accumulatedCost += monthlyStep;
             }
             finalCosts.push(accumulatedCost);
@@ -962,10 +981,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
 
         setMontecarloProbability(Math.round(probSuccess)); // Keep existing state for consistency if used elsewhere
 
-        // Create Histogram Data
+        // Calculate Percentiles
+        const p10 = finalCosts[Math.floor(iterations * 0.1)];
+        const p50 = finalCosts[Math.floor(iterations * 0.5)];
+        const p90 = finalCosts[Math.floor(iterations * 0.9)];
+
+        // Calculate Bins for Charting
         const minCost = finalCosts[0];
-        const maxCost = finalCosts[finalCosts.length - 1];
-        const binCount = 40; // High resolution
+        const maxCost = finalCosts[iterations - 1];
+        const binCount = 30;
         const binSize = (maxCost - minCost) / binCount;
 
         const chartData = [];
@@ -979,14 +1003,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             if (count > 0 || (binMid > totalBudget * 0.8 && binMid < totalBudget * 1.2)) { // Include empty bins near budget for scale
                 chartData.push({
                     cost: binMid,
+                    range: `${(binStart / 1000000).toFixed(1)}M-${(binEnd / 1000000).toFixed(1)}M`,
                     rangeStart: binStart,
                     rangeEnd: binEnd,
-                    frequency: count,
+                    count: count,
+                    frequency: count, // backward compat
                     isOverBudget: binMid > totalBudget
                 });
             }
         }
         setMontecarloData(chartData);
+        setMontecarloResults({ distribution: chartData, p10, p50, p90 });
     };
 
     // Risk Matrix Helpers
@@ -1114,9 +1141,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         { id: 'execution', label: 'Ejecución (WBS)', icon: Wrench },
         { id: 'financial', label: 'Finanzas', icon: DollarSign },
         { id: 'risks', label: 'Matriz Riesgos', icon: ShieldAlert },
-        { id: 'pmbok', label: 'PMBOK 7', icon: BookOpen },
-        { id: 'photos', label: 'Evidencia', icon: Camera },
-        { id: 'assistant', label: 'Greko IA', icon: Bot }
+        { id: 'pmbok', label: 'PMBOK 7', icon: BookOpen }
     ];
 
     const handleRunFinancialDeepAnalysis = async () => {
@@ -1302,82 +1327,178 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                     </BaseModal>
 
                     {/* MONTE CARLO SIMULATION MODAL */}
-                    <BaseModal isOpen={isMontecarloOpen} onClose={() => setIsMontecarloOpen(false)} title="Simulación Estocástica de Costos (Monte Carlo)">
-                        {/* Explanation Header */}
-                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-6">
-                            <h4 className="font-bold text-slate-800 text-sm uppercase mb-2 flex items-center gap-2">
-                                <Info size={16} className="text-blue-500" /> ¿Qué significa este gráfico?
-                            </h4>
-                            <p className="text-sm text-slate-600 leading-relaxed">
-                                Hemos simulado la ejecución de su proyecto <strong>1,000 veces</strong> aplicando variables aleatorias de riesgo (clima, huelgas, inflación) basadas en su matriz de riesgos actual.
-                                El gráfico muestra la frecuencia de los posibles <strong>Costos Finales</strong>.
-                            </p>
-                            <ul className="mt-3 space-y-1 text-sm text-slate-600 list-disc pl-5">
-                                <li>Las barras representan qué tan probable es que el proyecto termine costando esa cantidad.</li>
-                                <li>La <span className="font-bold text-red-500">Línea Roja Punteada</span> es su presupuesto actual.</li>
-                                <li>Si la "montaña" de barras está a la derecha de la línea roja, hay alta probabilidad de sobrecosto.</li>
-                            </ul>
-                        </div>
+                    <BaseModal isOpen={isMontecarloOpen} onClose={() => setIsMontecarloOpen(false)} title="Simulación Estocástica de Costos (Monte Carlo)" maxWidth="max-w-7xl">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            {/* CONFIGURATION COLUMN */}
+                            <div className="lg:col-span-4 space-y-6">
+                                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
+                                    <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2 text-xs uppercase tracking-widest">
+                                        <Globe size={16} className="text-indigo-600" /> Configuración Macroeconómica
+                                    </h4>
 
-                        {/* Key Metrics */}
-                        <div className="grid grid-cols-2 gap-6 mb-8">
-                            <div className="bg-green-50 p-6 rounded-2xl border border-green-100 text-center relative overflow-hidden">
-                                <div className="relative z-10">
-                                    <div className="text-xs font-bold text-green-800 uppercase tracking-widest mb-1">Probabilidad de Éxito</div>
-                                    <div className="text-5xl font-black text-green-600">{montecarloStats.probSuccess}%</div>
-                                    <p className="text-xs text-green-700 mt-2 font-medium">Bajo Presupuesto</p>
+                                    <div className="space-y-8">
+                                        {/* Inflation Rate */}
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><Percent size={14} className="text-blue-500" /> Inflación Anual</label>
+                                                <span className="text-xs font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-lg border border-blue-100">{macroData.inflationRate}%</span>
+                                            </div>
+                                            <input
+                                                type="range" min="0" max="25" step="0.1"
+                                                value={macroData.inflationRate}
+                                                onChange={(e) => setMacroData({ ...macroData, inflationRate: parseFloat(e.target.value) })}
+                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase"><span>0%</span><span>Meta 3%</span><span>25%</span></div>
+                                        </div>
+
+                                        {/* Forward TRM */}
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><TrendingUp size={14} className="text-green-500" /> TRM Forward (12m)</label>
+                                                <span className="text-xs font-black bg-green-50 text-green-600 px-2 py-1 rounded-lg border border-green-100">${macroData.forwardRate.toLocaleString()}</span>
+                                            </div>
+                                            <input
+                                                type="range" min="3000" max="6000" step="10"
+                                                value={macroData.forwardRate}
+                                                onChange={(e) => setMacroData({ ...macroData, forwardRate: parseFloat(e.target.value) })}
+                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-600"
+                                            />
+                                            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase"><span>3.000</span><span>Base 3.900</span><span>6.000</span></div>
+                                        </div>
+
+                                        {/* Investment Return */}
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-sm font-bold text-slate-700 flex items-center gap-2"><Landmark size={14} className="text-purple-500" /> Retorno Inversiones</label>
+                                                <span className="text-xs font-black bg-purple-50 text-purple-600 px-2 py-1 rounded-lg border border-purple-100">{macroData.investmentReturn}%</span>
+                                            </div>
+                                            <input
+                                                type="range" min="0" max="20" step="0.1"
+                                                value={macroData.investmentReturn}
+                                                onChange={(e) => setMacroData({ ...macroData, investmentReturn: parseFloat(e.target.value) })}
+                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                            />
+                                            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase"><span>0%</span><span>CDT Avg</span><span>20%</span></div>
+                                        </div>
+
+                                        <button
+                                            onClick={runMontecarlo}
+                                            className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-indigo-700 transition shadow-lg shadow-indigo-100 mt-4 active:scale-95"
+                                        >
+                                            <RefreshCw size={18} /> Recalcular Simulación
+                                        </button>
+
+                                        <p className="text-[10px] text-slate-400 text-center font-medium leading-relaxed px-4">
+                                            Al recalcular, la IA realiza 10.000 iteraciones estocásticas integrando el riesgo de volatilidad local y los ajustes macroeconómicos configurados.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-amber-50 p-5 rounded-xl border border-amber-100">
+                                    <h5 className="font-bold text-amber-800 text-xs uppercase mb-2 flex items-center gap-2">
+                                        <Info size={14} /> ¿Qué estamos simulando?
+                                    </h5>
+                                    <p className="text-xs text-amber-900/70 leading-relaxed font-medium">
+                                        Aplicamos el <strong>"Drift"</strong> inflacionario al CAPEX y el <strong>"Cushion"</strong> de retornos financieros al flujo de caja. La simulación utiliza el método de Monte Carlo para predecir la dispersión probabilística del costo final del proyecto.
+                                    </p>
                                 </div>
                             </div>
-                            <div className="bg-red-50 p-6 rounded-2xl border border-red-100 text-center relative overflow-hidden">
-                                <div className="relative z-10">
-                                    <div className="text-xs font-bold text-red-800 uppercase tracking-widest mb-1">Riesgo de Sobrecosto</div>
-                                    <div className="text-5xl font-black text-red-600">{montecarloStats.probFailure}%</div>
-                                    <p className="text-xs text-red-700 mt-2 font-medium">Sobre Presupuesto</p>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* The Chart */}
-                        <div className="h-[400px] w-full bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={montecarloData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }} barCategoryGap={2}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis
-                                        dataKey="cost"
-                                        type="number"
-                                        domain={['auto', 'auto']}
-                                        tickFormatter={(val) => `$${(val / 1000000).toFixed(0)}M`}
-                                        tick={{ fontSize: 10, fill: '#64748b' }}
-                                        label={{ value: 'Costo Final Estimado (COP)', position: 'insideBottom', offset: -10, fontSize: 12, fill: '#94a3b8' }}
-                                    />
-                                    <YAxis
-                                        hide
-                                        label={{ value: 'Frecuencia (Escenarios)', angle: -90, position: 'insideLeft', fontSize: 12, fill: '#94a3b8' }}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: '#f1f5f9' }}
-                                        content={({ active, payload }) => {
-                                            if (active && payload && payload.length) {
-                                                const d = payload[0].payload;
-                                                return (
-                                                    <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-xs">
-                                                        <div className="font-bold mb-1">Rango de Costo:</div>
-                                                        <div className="text-slate-300 mb-2">{formatCurrency(d.rangeStart)} - {formatCurrency(d.rangeEnd)}</div>
-                                                        <div className="font-bold text-lg">{d.frequency} <span className="text-xs font-normal text-slate-400">Escenarios</span></div>
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                    <Bar dataKey="frequency" name="Escenarios">
-                                        {montecarloData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.cost > data.totalBudget ? '#ef4444' : '#3b82f6'} opacity={entry.cost > data.totalBudget ? 0.8 : 0.6} />
-                                        ))}
-                                    </Bar>
-                                    <ReferenceLine x={data.totalBudget} stroke="#ef4444" strokeDasharray="5 5" label={{ position: 'top', value: 'Presupuesto', fill: '#ef4444', fontSize: 12, fontWeight: 'bold' }} />
-                                </BarChart>
-                            </ResponsiveContainer>
+                            {/* RESULTS COLUMN */}
+                            <div className="lg:col-span-8 space-y-6">
+                                {/* Probability Cards */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-green-50 p-6 rounded-2xl border border-green-100 text-center">
+                                        <div className="text-[10px] font-bold text-green-800 uppercase tracking-widest mb-1">Confianza de Presupuesto</div>
+                                        <div className="text-5xl font-black text-green-600">{montecarloStats.probSuccess}%</div>
+                                        <p className="text-xs text-green-700 mt-2 font-medium">Probabilidad de terminación dentro del costo base</p>
+                                    </div>
+                                    <div className="bg-red-50 p-6 rounded-2xl border border-red-100 text-center">
+                                        <div className="text-[10px] font-bold text-red-800 uppercase tracking-widest mb-1">Riesgo de Desviación</div>
+                                        <div className="text-5xl font-black text-red-600">{montecarloStats.probFailure}%</div>
+                                        <p className="text-xs text-red-700 mt-2 font-medium">Probabilidad de requerir adiciones presupuestales</p>
+                                    </div>
+                                </div>
+
+                                {/* The Chart */}
+                                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h4 className="font-bold text-slate-800">Distribución de Frecuencia Estocástica</h4>
+                                        <div className="text-[10px] font-black bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase tracking-tighter">Variación Histórica: {montecarloStats.volatility}%</div>
+                                    </div>
+
+                                    <div className="h-[350px] w-full">
+                                        {montecarloResults ? (
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={montecarloData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                                    <defs>
+                                                        <linearGradient id="colorMonte" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                    <XAxis
+                                                        dataKey="cost"
+                                                        tick={{ fontSize: 10, fill: '#64748b' }}
+                                                        tickFormatter={(val) => `$${(val / 1000000).toFixed(0)}M`}
+                                                        label={{ value: 'Costo Final Proyectado (COP)', position: 'insideBottom', offset: -10, fontSize: 10, fill: '#94a3b8', fontWeight: 'bold' }}
+                                                    />
+                                                    <YAxis hide />
+                                                    <Tooltip
+                                                        content={({ active, payload }) => {
+                                                            if (active && payload && payload.length) {
+                                                                const d = payload[0].payload;
+                                                                return (
+                                                                    <div className="bg-slate-900/95 backdrop-blur-sm text-white p-4 rounded-xl shadow-2xl border border-slate-700 min-w-[200px]">
+                                                                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-widest">Escenario de Costo</div>
+                                                                        <div className="font-mono text-lg font-black mb-1">{formatCurrency(d.rangeStart)} - {formatCurrency(d.rangeEnd)}</div>
+                                                                        <div className="h-0.5 w-full bg-slate-700 my-3"></div>
+                                                                        <div className="flex justify-between items-center">
+                                                                            <span className="text-xs text-slate-400">Ocurrencias:</span>
+                                                                            <span className="text-sm font-black text-indigo-400">{d.count} iteraciones</span>
+                                                                        </div>
+                                                                        {d.isOverBudget && <div className="mt-2 text-[10px] font-black text-red-400 uppercase bg-red-400/10 px-2 py-1 rounded border border-red-400/20 text-center">Sobre Presupuesto</div>}
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        }}
+                                                    />
+                                                    <Area type="monotone" dataKey="frequency" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorMonte)" animationDuration={1500} />
+                                                    <ReferenceLine x={data.totalBudget} stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5">
+                                                        <Label value="Presupuesto" position="top" fill="#ef4444" fontSize={10} fontWeight="bold" />
+                                                    </ReferenceLine>
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                                <Loader2 className="animate-spin mb-2" />
+                                                <p className="text-sm">Generando escenarios...</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Scenarios Summary */}
+                                {montecarloResults && (
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Optimista (P10)</div>
+                                            <div className="text-lg font-black text-green-600 font-mono">{formatCurrency(montecarloResults.p10)}</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center bg-blue-50/30 ring-2 ring-blue-100/50">
+                                            <div className="text-[10px] font-bold text-blue-400 uppercase mb-1">Más Probable (P50)</div>
+                                            <div className="text-lg font-black text-blue-600 font-mono">{formatCurrency(montecarloResults.p50)}</div>
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Pesimista (P90)</div>
+                                            <div className="text-lg font-black text-red-600 font-mono">{formatCurrency(montecarloResults.p90)}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </BaseModal>
 
@@ -2189,26 +2310,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                     )}
 
                     {/* ... Other Tabs (Contractor, Photos, Financial, Assistant) - No changes needed, just ensure they are closed properly ... */}
-                    {activeTab === 'assistant' && (
-                        /* ... Assistant content ... */
-                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex flex-col h-[600px] max-w-4xl mx-auto">
-                            <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                                <div className="flex items-center gap-3"><div className="bg-blue-600 p-2 rounded-lg text-white shadow-lg shadow-blue-200"><Bot size={24} /></div><div><h3 className="font-black text-slate-800 text-lg">El Greko AI</h3><p className="text-xs text-slate-500 font-medium">Asistente Experto en Gestión del Riesgo</p></div></div>
-                                <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> Online</div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 custom-scrollbar">
-                                {chatHistory.map(msg => (<div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl p-4 shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-gray-200 text-slate-700 rounded-bl-none'}`}><p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p><span className={`text-[10px] mt-2 block opacity-70 ${msg.role === 'user' ? 'text-blue-100' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString()}</span></div></div>))}
-                                {isChatLoading && (<div className="flex justify-start"><div className="bg-white border border-gray-200 rounded-2xl rounded-bl-none p-4 shadow-sm flex items-center gap-2"><Loader2 size={16} className="text-blue-600 animate-spin" /><span className="text-xs text-slate-500 font-medium">Pensando...</span></div></div>)}
-                                <div ref={chatEndRef} />
-                            </div>
-                            <div className="p-4 border-t border-gray-200 bg-white rounded-b-2xl">
-                                <form onSubmit={handleSendMessage} className="flex gap-2">
-                                    <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Pregunta sobre presupuesto, riesgos o cronograma..." className="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all" disabled={isChatLoading} />
-                                    <button type="submit" disabled={!chatInput.trim() || isChatLoading} className="bg-slate-900 text-white p-3 rounded-xl hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"><ArrowUpRight size={20} /></button>
-                                </form>
-                            </div>
-                        </div>
-                    )}
 
                     {activeTab === 'contractor' && (
                         /* ... Contractor content ... */
@@ -2231,13 +2332,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                         </div>
                     )}
 
-                    {activeTab === 'photos' && (
-                        /* ... Photos content ... */
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
-                            {(data.photos || []).map(photo => (<div key={photo.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm group"><div className="h-48 bg-gray-100 relative flex items-center justify-center"><Image size={32} className="text-gray-300" /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">Ver Imagen</div></div><div className="p-4"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{photo.date || 'Sin fecha'}</div><p className="text-sm font-medium text-slate-800 line-clamp-2">{photo.description}</p></div></div>))}
-                            {(data.photos || []).length === 0 && (<div className="col-span-3 text-center py-20 bg-slate-50 border border-dashed border-slate-300 rounded-2xl"><Camera size={48} className="mx-auto text-slate-300 mb-4" /><h3 className="text-lg font-bold text-slate-500">No hay evidencia fotográfica</h3><p className="text-sm text-slate-400">Las fotos extraídas del reporte aparecerán aquí.</p></div>)}
-                        </div>
-                    )}
 
                     {activeTab === 'financial' && (
                         <div className="space-y-8 animate-fade-in pb-10">

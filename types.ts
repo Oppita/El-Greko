@@ -609,6 +609,16 @@ export interface EvolutionLog {
     efficiencyRationale?: string;
 }
 
+// --- MACROECONOMIC INTELLIGENCE ---
+export interface MacroeconomicData {
+    inflationRate: number; // e.g. 5.5 for 5.5%
+    forwardRate: number;   // e.g. 3950 for TRM Forward
+    investmentReturn: number; // e.g. 10.2 for 10.2% (Financial returns)
+    isInflationConfigurable: boolean;
+    isForwardConfigurable: boolean;
+    isInvestmentConfigurable: boolean;
+}
+
 export interface ProjectData {
     projectName: string;
     contractId: string;
@@ -643,6 +653,7 @@ export interface ProjectData {
     progressAudits?: ProgressAudit[];
     pmbokAnalysis?: PMBOKAnalysis;
     evolutionHistory?: EvolutionLog[]; // NEW: History of AI updates
+    macroeconomicData: MacroeconomicData; // NEW: Macro Intelligence
 }
 
 export const INITIAL_PROJECT_DATA: ProjectData = {
@@ -684,5 +695,13 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     kpis: { cpi: 1, spi: 1, estimatedDailyOverhead: 0, isi: 1 },
     valueEngineering: [],
     alerts: [],
-    evolutionHistory: []
+    evolutionHistory: [],
+    macroeconomicData: {
+        inflationRate: 5.5,
+        forwardRate: 4000,
+        investmentReturn: 10.0,
+        isInflationConfigurable: true,
+        isForwardConfigurable: true,
+        isInvestmentConfigurable: true
+    }
 };
