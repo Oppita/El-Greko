@@ -1197,7 +1197,7 @@ export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<Kn
                             properties: {
                                 name: { type: "string" },
                                 type: { type: "string" },
-                                complexity: { enum: ["Alta", "Media", "Baja"] },
+                                complexity: { type: "string", enum: ["Alta", "Media", "Baja"] },
                                 estimatedCost: { type: "string" },
                                 pros: { type: "array", items: { type: "string" } },
                                 cons: { type: "array", items: { type: "string" } },
@@ -1205,8 +1205,8 @@ export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<Kn
                             }
                         }
                     },
-                    monitoringAlternatives: { type: "array", items: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, complexity: { enum: ["Alta", "Media", "Baja"] }, estimatedCost: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, recommendationRationale: { type: "string" } } } },
-                    criticalDataGaps: { type: "array", items: { type: "object", properties: { gap: { type: "string" }, criticality: { enum: ["Alta", "Media", "Baja"] }, impact: { type: "string" }, actionPlan: { type: "string" } } } }
+                    monitoringAlternatives: { type: "array", items: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, complexity: { type: "string", enum: ["Alta", "Media", "Baja"] }, estimatedCost: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, recommendationRationale: { type: "string" } } } },
+                    criticalDataGaps: { type: "array", items: { type: "object", properties: { gap: { type: "string" }, criticality: { type: "string", enum: ["Alta", "Media", "Baja"] }, impact: { type: "string" }, actionPlan: { type: "string" } } } }
                 },
                 required: ["overallKnowledgeScore", "riskCharacterization", "modelingAlternatives", "monitoringAlternatives", "criticalDataGaps"]
             }
@@ -1252,7 +1252,7 @@ export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<C
                     },
                     vulnerabilityAssessment: { type: "string" },
                     technicalRigorScore: { type: "number" },
-                    riskOfFailure: { enum: ["Alto", "Medio", "Bajo"] },
+                    riskOfFailure: { type: "string", enum: ["Alto", "Medio", "Bajo"] },
                     holisticRecommendations: { type: "array", items: { type: "string" } },
                     alternativeSolutions: { type: "array", items: { type: "object", properties: { solutionName: { type: "string" }, description: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, estimatedCostImpact: { type: "string" }, resilienceScore: { type: "number" } } } },
                     resourceOptimizationAudit: { type: "string" },
@@ -1290,7 +1290,7 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
                     preparednessScore: { type: "number" },
                     contingencyPlanAudit: { type: "string" },
                     evacuationProtocols: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
-                    commandChain: { type: "object", properties: { clarity: { enum: ["Clara", "Ambiguo", "Inexistente"] }, recommendations: { type: "array", items: { type: "string" } } } },
+                    commandChain: { type: "object", properties: { clarity: { type: "string", enum: ["Clara", "Ambiguo", "Inexistente"] }, recommendations: { type: "array", items: { type: "string" } } } },
                     responseLogistics: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
                     communicationSystemsAudit: { type: "string" },
                     actionableRecommendations: { type: "array", items: { type: "string" } }
