@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, ReferenceLine,
-    LineChart, Line, Legend, AreaChart, Area, LabelList,
+    LineChart, Line, Legend, AreaChart, Area, LabelList, Label,
     RadialBarChart, RadialBar, PolarAngleAxis,
     ComposedChart, Scatter
 } from 'recharts';
