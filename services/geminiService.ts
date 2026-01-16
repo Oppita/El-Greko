@@ -2,7 +2,16 @@
 import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+const getApiKey = () => {
+    try {
+        // @ts-ignore
+        return import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+    } catch (e) {
+        return process.env.VITE_GEMINI_API_KEY || '';
+    }
+};
+
+const genAI: any = new GoogleGenAI({ apiKey: getApiKey() } as any);
 
 const SYSTEM_INSTRUCTION = `
 ROL: DIRECTOR FINANCIERO (CFO) Y AUDITOR FORENSE DE INFRAESTRUCTURA (Experto UNGRD).
@@ -92,15 +101,30 @@ export interface AnalysisInput {
 
 // --- UTILITIES ---
 
-const cleanJsonString = (str: string): string => {
+export const cleanJsonString = (str: string): string => {
     if (!str) return "{}";
     // Remove markdown code blocks
     let cleaned = str.replace(/```json\s*/g, '').replace(/```\s*/g, '');
     // Attempt to remove leading/trailing text if any (simple heuristic)
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    const firstBracket = cleaned.indexOf('[');
+    const lastBracket = cleaned.lastIndexOf(']');
+
+    // Handle both objects {} and arrays []
+    let start = -1;
+    let end = -1;
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+        start = firstBrace;
+        end = lastBrace;
+    } else if (firstBracket !== -1) {
+        start = firstBracket;
+        end = lastBracket;
+    }
+
+    if (start !== -1 && end !== -1 && end > start) {
+        cleaned = cleaned.substring(start, end + 1);
     }
     return cleaned;
 };
@@ -575,33 +599,21 @@ const sanitizeProjectData = (data: any): ProjectData => {
 
 // --- ROBUST GENERATION HELPER ---
 const generateWithFallback = async (configParams: any, timeoutMs: number = 180000) => {
-    // Attempt 1: Gemini 3 Pro (High Reasoning)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    // Attempt 1: Gemini 1.5 Pro (High Reasoning)
+    const modelPro = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     try {
-        const response = await ai.models.generateContent({
-            ...configParams,
-            model: "gemini-3-pro-preview",
-        });
-        clearTimeout(timeoutId);
-        return response;
+        const result = await modelPro.generateContent(configParams);
+        return result.response;
     } catch (error: any) {
-        clearTimeout(timeoutId);
-        console.warn("Gemini 3 Pro Preview failed or timed out. Retrying with Gemini 2.5 Flash...", error);
+        console.warn("Gemini 1.5 Pro failed. Retrying with Gemini 1.5 Flash...", error);
 
-        // Attempt 2: Gemini 2.5 Flash (High Stability/Speed)
-        const controller2 = new AbortController();
-        const timeoutId2 = setTimeout(() => controller2.abort(), timeoutMs); // Same timeout for fallback
+        // Attempt 2: Gemini 1.5 Flash (High Stability/Speed)
         try {
-            const response = await ai.models.generateContent({
-                ...configParams,
-                model: "gemini-2.5-flash",
-            });
-            clearTimeout(timeoutId2);
-            return response;
+            const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const result = await modelFlash.generateContent(configParams);
+            return result.response;
         } catch (err2) {
-            clearTimeout(timeoutId2);
             throw err2;
         }
     }
@@ -609,19 +621,11 @@ const generateWithFallback = async (configParams: any, timeoutMs: number = 18000
 
 // --- FAST GENERATION HELPER (NO FALLBACK, FLASH ONLY) ---
 const generateFast = async (configParams: any, timeoutMs: number = 30000) => {
-    // Direct call to Gemini 2.5 Flash for low latency tasks
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
-        const response = await ai.models.generateContent({
-            ...configParams,
-            model: "gemini-2.5-flash",
-        });
-        clearTimeout(timeoutId);
-        return response;
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent(configParams);
+        return result.response;
     } catch (error: any) {
-        clearTimeout(timeoutId);
         console.error("Fast generation failed:", error);
         throw error;
     }
@@ -900,20 +904,20 @@ export const searchProjectInfo = async (projectData: ProjectData): Promise<Searc
     try {
         const query = `Busca información actual, noticias recientes, controversias y estado real del proyecto: ${projectData.projectName} en ${projectData.location.municipality}. Contratista: ${projectData.contractor}. Resumen ejecutivo.`;
 
-        // Use Google Search Grounding with Flash 2.5
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: query,
-            config: {
-                tools: [{ googleSearch: {} }],
-                // responseMimeType is NOT allowed with googleSearch
-            }
+        // Use Google Search Grounding with Flash 1.5
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const response = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: query }] }],
+            tools: [{ googleSearchRetrieval: {} } as any],
         });
+
+        const res = response.response;
 
         const sources: { title: string; uri: string }[] = [];
 
         // Extract grounding chunks
-        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const groundingMetadata = res.candidates?.[0]?.groundingMetadata;
+        const chunks = groundingMetadata?.groundingChunks || [];
         chunks.forEach((chunk: any) => {
             if (chunk.web) {
                 sources.push({ title: chunk.web.title, uri: chunk.web.uri });
@@ -921,7 +925,7 @@ export const searchProjectInfo = async (projectData: ProjectData): Promise<Searc
         });
 
         return {
-            summary: response.text || "No se encontró información relevante en la web.",
+            summary: res.text() || "No se encontró información relevante en la web.",
             sources: sources
         };
     } catch (error) {
@@ -1142,13 +1146,36 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
     TAREA: Evaluar el proyecto "${projectData.projectName}" frente a los 12 principios del PMBOK 7.
     DATOS: ${JSON.stringify({ obj: projectData.generalObjective, progress: projectData.progressPercentage, risks: projectData.risks.length })}
     
-    OUTPUT JSON: { principles: [{name: string, score: number, reasoning: string, englishName: string}], overallObservation: string, auditDate: string }
     Lista de principios: Stewardship, Team, Stakeholders, Value, Systems Thinking, Leadership, Tailoring, Quality, Complexity, Risk, Adaptability, Change.
+    Genera un JSON que cumpla estrictamente con la interfaz PMBOKAnalysis.
     `;
 
     const response = await generateFast({
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    principles: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                name: { type: "string" },
+                                englishName: { type: "string" },
+                                score: { type: "number" },
+                                reasoning: { type: "string" }
+                            },
+                            required: ["name", "score", "reasoning"]
+                        }
+                    },
+                    overallObservation: { type: "string" },
+                    auditDate: { type: "string" }
+                },
+                required: ["principles", "overallObservation", "auditDate"]
+            }
+        }
     });
 
     if (response.text) return JSON.parse(cleanJsonString(response.text));
@@ -1156,10 +1183,30 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
 };
 
 export const analyzePMBOKPrincipleDeep = async (projectData: ProjectData, principleName: string): Promise<PMBOKDeepAnalysis> => {
-    const prompt = `Deep dive analysis for PMBOK Principle: ${principleName}. Project: ${projectData.projectName}. Output JSON matching PMBOKDeepAnalysis interface.`;
+    const prompt = `
+    Realiza un análisis PROFUNDO del principio PMBOK: ${principleName}.
+    Proyecto: ${projectData.projectName}.
+    Objetivo: ${projectData.generalObjective}.
+    
+    Genera un JSON que cumpla estrictamente con la interfaz PMBOKDeepAnalysis.
+    `;
     const response = await generateFast({
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    diagnosis: { type: "string" },
+                    strengths: { type: "array", items: { type: "string" } },
+                    weaknesses: { type: "array", items: { type: "string" } },
+                    actionableSteps: { type: "array", items: { type: "string" } },
+                    kpiImpact: { type: "string" },
+                    consequenceSimulation: { type: "string" }
+                },
+                required: ["diagnosis", "strengths", "weaknesses", "actionableSteps", "kpiImpact"]
+            }
+        }
     });
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Deep Dive");
@@ -1274,11 +1321,12 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
     
     TAREA:
     1. Audita el plan de contingencia reportado.
-    2. Evalúa protocolos de evacuación y cadena de mando.
-    3. Identifica fortalezas y debilidades en la logística de respuesta (PMU, albergues).
-    4. Propón RECOMENDACIONES DE ACCIÓN INMEDIATA.
-    
-    Genera un JSON que cumpla estrictamente con la interfaz ManagementDeepAnalysis.
+    2. Calcula el Integrated Speed Index (ISI) de 0 a 100 (velocidad de respuesta y movilización de recursos).
+    3. Evalúa protocolos de evacuación y cadena de mando.
+    4. Identifica fortalezas y debilidades en la logística de respuesta (PMU, albergues).
+    5. Propón RECOMENDACIONES DE ACCIÓN INMEDIATA.
+
+    Genera un JSON que cumpla estrictamente con la interfaz ManagementDeepAnalysis e incluye el score integratedSpeedIndex.
     `;
     const response = await generateWithFallback({
         contents: prompt,
@@ -1288,6 +1336,7 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
                 type: "object",
                 properties: {
                     preparednessScore: { type: "number" },
+                    integratedSpeedIndex: { type: "number" }, // Action 17: ISI Index
                     contingencyPlanAudit: { type: "string" },
                     evacuationProtocols: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
                     commandChain: { type: "object", properties: { clarity: { type: "string", enum: ["Clara", "Ambiguo", "Inexistente"] }, recommendations: { type: "array", items: { type: "string" } } } },
@@ -1295,7 +1344,7 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
                     communicationSystemsAudit: { type: "string" },
                     actionableRecommendations: { type: "array", items: { type: "string" } }
                 },
-                required: ["preparednessScore", "contingencyPlanAudit", "actionableRecommendations"]
+                required: ["preparednessScore", "integratedSpeedIndex", "contingencyPlanAudit", "actionableRecommendations"]
             }
         }
     });
@@ -1392,22 +1441,52 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
     5. Propón estrategias de optimización de costos.
     6. Identifica discrepancias entre el presupuesto por actividades y el total reportado.
 
-    Output JSON compatible con interface FinancialDeepAnalysis:
-    {
-        healthScore: number,
-        diagnosis: string,
-        forecast: { eac: number, vac: number, projectedStatus: 'Superávit' | 'Déficit' | 'Equilibrio' },
-        concatenationAnalysis: { budgetVsExecutionGap: string, flaggedDiscrepancies: [{activityName, budgetedAmount, executionCost, variance}] },
-        optimizationStrategies: [{title, impact, action}],
-        riskItems: [{item, riskLevel, reason}],
-        sensitivityAnalysis: [{scenario, impactOnEAC, impactOnTir, mitigationStrategy}]
-    }
+    Genera un JSON que cumpla estrictamente con la interfaz FinancialDeepAnalysis. 
+    Asegura incluir el análisis de sensibilidad TIR/VPN y el diagnóstico de rentabilidad social.
     `;
-    const response = await generateFast({
+    const response = await generateWithFallback({
         contents: prompt,
         config: {
-            temperature: 0.2,
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    healthScore: { type: "number" },
+                    diagnosis: { type: "string" },
+                    forecast: {
+                        type: "object",
+                        properties: {
+                            eac: { type: "number" },
+                            vac: { type: "number" },
+                            projectedStatus: { type: "string", enum: ["Superávit", "Déficit", "Equilibrio"] }
+                        },
+                        required: ["eac", "vac", "projectedStatus"]
+                    },
+                    concatenationAnalysis: {
+                        type: "object",
+                        properties: {
+                            budgetVsExecutionGap: { type: "string" },
+                            flaggedDiscrepancies: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        activityName: { type: "string" },
+                                        budgetedAmount: { type: "number" },
+                                        executionCost: { type: "number" },
+                                        variance: { type: "string" }
+                                    }
+                                }
+                            }
+                        },
+                        required: ["budgetVsExecutionGap"]
+                    },
+                    optimizationStrategies: { type: "array", items: { type: "object", properties: { title: { type: "string" }, impact: { type: "string" }, action: { type: "string" } } } },
+                    riskItems: { type: "array", items: { type: "object", properties: { item: { type: "string" }, riskLevel: { type: "string", enum: ["Alto", "Medio", "Bajo"] }, reason: { type: "string" } } } },
+                    sensitivityAnalysis: { type: "array", items: { type: "object", properties: { scenario: { type: "string" }, impactOnEAC: { type: "number" }, impactOnTir: { type: "number" }, mitigationStrategy: { type: "string" } } } }
+                },
+                required: ["healthScore", "diagnosis", "forecast", "concatenationAnalysis", "optimizationStrategies", "riskItems"]
+            }
         }
     }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));
@@ -1415,109 +1494,68 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
 };
 
 export const analyzeContractorRisk = async (projectData: ProjectData): Promise<ContractorProfile> => {
-    try {
-        // Build context from project data for forensic analysis
-        const projectContext = {
-            name: projectData.projectName,
-            budget: projectData.totalBudget,
-            spent: projectData.spentBudget,
-            progress: projectData.progressPercentage,
-            phase: projectData.projectPhase,
-            startDate: projectData.startDate,
-            endDate: projectData.endDate,
-            risks: projectData.risks.slice(0, 5).map(r => r.risk),
-            bottlenecks: projectData.bottlenecks.slice(0, 5).map(b => ({ name: b.processName, status: b.status, days: b.daysDelayed })),
-            milestones: projectData.milestones.slice(0, 10).map(m => ({ desc: m.description, status: m.status, progress: m.progress }))
-        };
+    // Build context from project data for forensic analysis
+    const projectContext = {
+        name: projectData.projectName,
+        budget: projectData.totalBudget,
+        spent: projectData.spentBudget,
+        progress: projectData.progressPercentage,
+        phase: projectData.projectPhase,
+        contractor: projectData.contractor,
+        nit: projectData.nit
+    };
 
-        const prompt = `
-        RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
-        ROL: AUDITOR FORENSE SENIOR (Contraloría General / UNGRD - Análisis de Contratistas).
-        
-        TAREA: Realizar una auditoría forense exhaustiva del contratista del proyecto para evaluar su idoneidad, salud financiera y riesgos de desembolso.
+    const prompt = `
+    RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
+    ROL: AUDITOR FORENSE SENIOR (Contraloría General / UNGRD - Análisis de Contratistas).
+    
+    TAREA: Realizar una auditoría forense exhaustiva del contratista "${projectData.contractor}" (NIT: ${projectData.nit}) para evaluar su idoneidad, salud financiera y riesgos de desembolso.
+    PROYECTO: ${projectData.projectName}
+    PRESUPUESTO: ${projectData.totalBudget}
+    
+    Genera un JSON que cumpla estrictamente con la interfaz ContractorProfile.
+    `;
 
-        DATOS DEL CONTRATISTA:
-        - Nombre/Razón Social: ${projectData.contractor}
-        - NIT: ${projectData.nit}
-        
-        CONTEXTO DEL PROYECTO:
-        ${JSON.stringify(projectContext, null, 2)}
-        
-        INSTRUCCIONES DE ANÁLISIS:
-        1.  **Índice de Idoneidad (suitabilityScore)**: Evalúa de 0 a 100 la capacidad del contratista para ejecutar este proyecto. Considera:
-            - Avance físico vs tiempo transcurrido
-            - Ejecución presupuestal (CPI implícito)
-            - Cuellos de botella generados
-            - Historial de retrasos en hitos
-        
-        2.  **Salud Financiera (financialHealth)**: Emite un veredicto: "Saludable", "En Vigilancia" o "Crítico".
-            - Basado en la relación gasto/avance
-            - Indicadores de posible descapitalización
-            - Riesgo de incumplimiento
-        
-        3.  **Banderas Rojas (redFlags)**: Lista de alertas específicas detectadas:
-            - Retrasos significativos sin justificación técnica
-            - Sobrecostos no explicados
-            - Bloqueos administrativos recurrentes
-            - Inconsistencias entre avance reportado y evidencia
-            - Señales de posible abandono de obra
-        
-        4.  **Riesgo de Desembolso (disbursementRisk)**: Clasifica como "Bajo", "Medio" o "Alto".
-            - ¿Es seguro continuar los desembolsos programados?
-            - ¿Hay riesgo de pérdida de recursos públicos?
-        
-        5.  **Racional de Desembolso (disbursementRationale)**: Explica técnicamente por qué recomiendas o no continuar desembolsando.
-        
-        6.  **Resumen Ejecutivo (summary)**: Párrafo conciso con el diagnóstico general del contratista.
-
-        SALIDA JSON (Strict Schema):
-        `;
-
-        const response = await generateFast({
-            contents: prompt,
-            config: {
-                temperature: 0.2,
-                responseMimeType: "application/json"
+    const response = await generateWithFallback({
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    name: { type: "string" },
+                    nit: { type: "string" },
+                    suitabilityScore: { type: "number" },
+                    disbursementRisk: { type: "string" },
+                    disbursementRationale: { type: "string" },
+                    redFlags: { type: "array", items: { type: "string" } },
+                    financialHealth: { type: "string" },
+                    experienceValidation: { type: "string" },
+                    summary: { type: "string" }
+                },
+                required: ["name", "nit", "suitabilityScore", "disbursementRisk", "disbursementRationale", "redFlags"]
             }
-        }, 60000);
-
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
-            const result = JSON.parse(cleaned);
-
-            // Ensure all required fields are present with defaults
-            return {
-                name: result.name || projectData.contractor,
-                nit: result.nit || projectData.nit,
-                suitabilityScore: result.suitabilityScore ?? 50,
-                financialHealth: result.financialHealth || "En Vigilancia",
-                redFlags: result.redFlags || [],
-                disbursementRisk: result.disbursementRisk || "Medio",
-                disbursementRationale: result.disbursementRationale || "Requiere auditoría adicional.",
-                summary: result.summary || "Análisis pendiente de completar."
-            };
         }
+    });
 
-        throw new Error("No se pudo generar el análisis del contratista.");
-
-    } catch (error) {
-        console.error("Contractor Risk Analysis Error:", error);
-        throw error;
-    }
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    throw new Error("Failed Contractor Analysis");
 };
+
+
 
 
 export const analyzeCriticalPath = async (milestones: ProjectMilestone[], context: { name: string, objective: string }): Promise<{ updatedMilestones: ProjectMilestone[], analysisSummary: string }> => {
     const prompt = `
-    Calcula la RUTA CRÍTICA (CPM) para estas actividades: ${JSON.stringify(milestones.map(m => ({ code: m.code, desc: m.description, start: m.startDate, end: m.endDate })))}.
-    Contexto: ${context.name}.
+    Calcula la RUTA CRÍTICA(CPM) para estas actividades: ${JSON.stringify(milestones.map(m => ({ code: m.code, desc: m.description, start: m.startDate, end: m.endDate })))}.
+Contexto: ${context.name}.
     
     Output JSON:
-    {
-        updatedMilestones: [List of milestones with updated 'isCriticalPath' boolean and 'criticalPathReasoning'],
-        analysisSummary: string (Executive summary of the timeline health)
-    }
-    `;
+{
+    updatedMilestones: [List of milestones with updated 'isCriticalPath' boolean and 'criticalPathReasoning'],
+    analysisSummary: string(Executive summary of the timeline health)
+}
+`;
     const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
@@ -1538,23 +1576,23 @@ export const analyzeCriticalPath = async (milestones: ProjectMilestone[], contex
 
 export const analyzeValueEngineering = async (projectData: ProjectData): Promise<ValueEngineeringAction[]> => {
     const prompt = `
-    ROL: EXPERTO EN INGENIERÍA DE VALOR Y REDUCCIÓN DEL RIESGO (UNGRD).
+ROL: EXPERTO EN INGENIERÍA DE VALOR Y REDUCCIÓN DEL RIESGO(UNGRD).
     
     Analiza el proyecto: ${projectData.projectName}
-    Objetivo: ${projectData.generalObjective}
-    Presupuesto: ${projectData.totalBudget}
-    Actividades: ${JSON.stringify(projectData.milestones.map(m => ({ desc: m.description, cost: m.estimatedCost })))}
-    
-    TAREA:
+Objetivo: ${projectData.generalObjective}
+Presupuesto: ${projectData.totalBudget}
+Actividades: ${JSON.stringify(projectData.milestones.map(m => ({ desc: m.description, cost: m.estimatedCost })))}
+
+TAREA:
     Propón 5 acciones de Ingeniería de Valor para optimizar el proyecto bajo el marco de la Subdirección para la Reducción del Riesgo de la UNGRD.
     Céntrate en:
-    1. Intervención Correctiva: Mejora técnica de obras con menor costo y mayor resiliencia (bioingeniería, soluciones basadas en la naturaleza, optimización de materiales).
-    2. Intervención Prospectiva: Prevención basada en datos, alertas tempranas y articulación con Ordenamiento Territorial (POT).
-    3. Protección Financiera: Mecanismos de transferencia de riesgo (Seguros paramétricos, bonos de catástrofe) para optimizar el capital público.
+1. Intervención Correctiva: Mejora técnica de obras con menor costo y mayor resiliencia(bioingeniería, soluciones basadas en la naturaleza, optimización de materiales).
+    2. Intervención Prospectiva: Prevención basada en datos, alertas tempranas y articulación con Ordenamiento Territorial(POT).
+    3. Protección Financiera: Mecanismos de transferencia de riesgo(Seguros paramétricos, bonos de catástrofe) para optimizar el capital público.
     
     Output JSON compatible con interface ValueEngineeringAction[]:
-    [
-      {
+[
+    {
         "id": "VE-001",
         "description": "...",
         "originalCost": number,
@@ -1563,14 +1601,31 @@ export const analyzeValueEngineering = async (projectData: ProjectData): Promise
         "technicalTradeoff": "Explicación del balance entre ahorro y desempeño técnico",
         "implementationComplexity": "Low" | "Medium" | "High",
         "status": "Planned"
-      }
-    ]
+    }
+]
     `;
     const response = await generateFast({
         contents: prompt,
         config: {
             temperature: 0.2,
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        id: { type: "string" },
+                        description: { type: "string" },
+                        originalCost: { type: "number" },
+                        optimizedCost: { type: "number" },
+                        savings: { type: "number" },
+                        technicalTradeoff: { type: "string" },
+                        implementationComplexity: { type: "string", enum: ["Low", "Medium", "High"] },
+                        status: { type: "string", enum: ["Planned", "Approved", "Implemented"] }
+                    },
+                    required: ["id", "description", "originalCost", "optimizedCost", "savings", "technicalTradeoff", "implementationComplexity", "status"]
+                }
+            }
         }
     }, 60000);
     if (response.text) return JSON.parse(cleanJsonString(response.text));

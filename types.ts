@@ -343,6 +343,7 @@ export interface KnowledgeDeepAnalysis {
 // --- UNGRD MANAGEMENT DEEP DIVE (NEW) ---
 export interface ManagementDeepAnalysis {
     preparednessScore: number; // 0-100
+    integratedSpeedIndex: number; // Action 17: ISI Index
     contingencyPlanAudit: string; // Detailed analysis of the contingency plan
     evacuationProtocols: {
         strengths: string[];
