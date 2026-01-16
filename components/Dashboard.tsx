@@ -1941,11 +1941,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="bg-red-50 p-6 rounded-xl border border-red-100">
                                                         <h5 className="font-bold text-red-800 mb-3 flex items-center gap-2"><AlertCircle size={18} /> Brechas de Cobertura</h5>
-                                                        <ul className="space-y-2">{financialProtectionAnalysis.coverageGaps.map((gap, i) => (<li key={i} className="text-sm text-red-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></div>{gap}</li>))}</ul>
+                                                        <ul className="space-y-2">{(financialProtectionAnalysis.coverageGaps || []).map((gap, i) => (<li key={i} className="text-sm text-red-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></div>{gap}</li>))}</ul>
                                                     </div>
                                                     <div className="bg-green-50 p-6 rounded-xl border border-green-100">
                                                         <h5 className="font-bold text-green-800 mb-3 flex items-center gap-2"><CheckCircle size={18} /> Instrumentos Recomendados</h5>
-                                                        <ul className="space-y-2">{financialProtectionAnalysis.recommendedInstruments.map((inst, i) => (<li key={i} className="text-sm text-green-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0"></div>{inst}</li>))}</ul>
+                                                        <ul className="space-y-2">{(financialProtectionAnalysis.recommendedInstruments || []).map((inst, i) => (<li key={i} className="text-sm text-green-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0"></div>{inst}</li>))}</ul>
                                                     </div>
                                                 </div>
                                                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
@@ -1990,7 +1990,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                                 <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-100">
                                                     <h5 className="font-bold text-yellow-800 mb-4 flex items-center gap-2"><Bot size={18} /> Recomendaciones de Acción Inmediata</h5>
                                                     <div className="space-y-3">
-                                                        {managementDeepAnalysis.actionableRecommendations.map((rec, i) => (
+                                                        {(managementDeepAnalysis.actionableRecommendations || []).map((rec, i) => (
                                                             <div key={i} className="flex gap-3 bg-white/60 p-3 rounded-lg border border-yellow-200/50">
                                                                 <div className="bg-yellow-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0">{i + 1}</div>
                                                                 <p className="text-sm text-yellow-900 font-medium">{rec}</p>

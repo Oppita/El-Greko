@@ -1165,6 +1165,144 @@ export const analyzePMBOKPrincipleDeep = async (projectData: ProjectData, princi
     throw new Error("Failed Deep Dive");
 };
 
+export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<KnowledgeDeepAnalysis> => {
+    const prompt = `
+    Eres un Experto en Gestión del Riesgo (Subdirección de Conocimiento, UNGRD).
+    Analiza el Conocimiento del Riesgo para el proyecto: ${projectData.projectName}.
+    Objetivo: ${projectData.generalObjective}.
+    Hallazgos previos: ${projectData.ungrdAnalysis.knowledge.observation}.
+    Escenarios: ${projectData.ungrdAnalysis.knowledge.scenariosIdentified.join(', ')}.
+
+    TAREA:
+    1. Caracteriza técnicamente el riesgo (amenaza, vulnerabilidad, exposición).
+    2. Identifica VACÍOS CRÍTICOS de información (estudios faltantes).
+    3. Propón alternativas de MODELAMIENTO (ej. HEC-RAS, simulaciones sísmicas).
+    4. Propón alternativas de MONITOREO (ej. Sensores de nivel, estaciones meteorológicas).
+    
+    Genera un JSON que cumpla estrictamente con la interfaz KnowledgeDeepAnalysis.
+    `;
+    const response = await generateWithFallback({
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    overallKnowledgeScore: { type: "number" },
+                    riskCharacterization: { type: "string" },
+                    modelingAlternatives: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                name: { type: "string" },
+                                type: { type: "string" },
+                                complexity: { enum: ["Alta", "Media", "Baja"] },
+                                estimatedCost: { type: "string" },
+                                pros: { type: "array", items: { type: "string" } },
+                                cons: { type: "array", items: { type: "string" } },
+                                recommendationRationale: { type: "string" }
+                            }
+                        }
+                    },
+                    monitoringAlternatives: { type: "array", items: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, complexity: { enum: ["Alta", "Media", "Baja"] }, estimatedCost: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, recommendationRationale: { type: "string" } } } },
+                    criticalDataGaps: { type: "array", items: { type: "object", properties: { gap: { type: "string" }, criticality: { enum: ["Alta", "Media", "Baja"] }, impact: { type: "string" }, actionPlan: { type: "string" } } } }
+                },
+                required: ["overallKnowledgeScore", "riskCharacterization", "modelingAlternatives", "monitoringAlternatives", "criticalDataGaps"]
+            }
+        }
+    });
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    throw new Error("Failed Knowledge Analysis");
+};
+
+export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<CorrectiveDeepAnalysis> => {
+    const prompt = `
+    Eres un Experto en Reducción del Riesgo (Intervención Correctiva, UNGRD).
+    Realiza una auditoría forense de la solución de ingeniería propuesta para: ${projectData.projectName}.
+    Objetivo: ${projectData.generalObjective}.
+    Presupuesto: ${projectData.totalBudget}.
+    Datos técnicos: ${JSON.stringify(projectData.ungrdAnalysis.reduction.corrective)}.
+    
+    TAREA:
+    1. Realiza un diagnóstico de la amenaza que se busca mitigar.
+    2. Realiza una CRÍTICA TÉCNICA (Value Engineering) a la solución propuesta. ¿Es la más eficiente?
+    3. Evalúa la suficiencia presupuestal y viabilidad del cronograma.
+    4. Propón SOLUCIONES ALTERNATIVAS (ej. bioingeniería vs concreto).
+    5. Realiza un análisis costo-beneficio cualitativo.
+    
+    Genera un JSON que cumpla estrictamente con la interfaz CorrectiveDeepAnalysis.
+    `;
+    const response = await generateWithFallback({
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    threatDiagnosis: { type: "string" },
+                    engineeringSolutionAudit: { type: "string" },
+                    transversalChecks: {
+                        type: "object",
+                        properties: {
+                            budgetSufficiency: { type: "string" },
+                            timelineFeasibility: { type: "string" },
+                            regulatoryCompliance: { type: "string" }
+                        }
+                    },
+                    vulnerabilityAssessment: { type: "string" },
+                    technicalRigorScore: { type: "number" },
+                    riskOfFailure: { enum: ["Alto", "Medio", "Bajo"] },
+                    holisticRecommendations: { type: "array", items: { type: "string" } },
+                    alternativeSolutions: { type: "array", items: { type: "object", properties: { solutionName: { type: "string" }, description: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, estimatedCostImpact: { type: "string" }, resilienceScore: { type: "number" } } } },
+                    resourceOptimizationAudit: { type: "string" },
+                    costBenefitAnalysis: { type: "string" }
+                },
+                required: ["threatDiagnosis", "engineeringSolutionAudit", "technicalRigorScore", "alternativeSolutions"]
+            }
+        }
+    });
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    throw new Error("Failed Corrective Analysis");
+};
+
+export const analyzeManagementDeep = async (projectData: ProjectData): Promise<ManagementDeepAnalysis> => {
+    const prompt = `
+    Eres un Experto en Manejo de Desastres (UNGRD).
+    Analiza la capacidad de respuesta y preparación para: ${projectData.projectName}.
+    Datos actuales: ${JSON.stringify(projectData.ungrdAnalysis.management)}.
+    
+    TAREA:
+    1. Audita el plan de contingencia reportado.
+    2. Evalúa protocolos de evacuación y cadena de mando.
+    3. Identifica fortalezas y debilidades en la logística de respuesta (PMU, albergues).
+    4. Propón RECOMENDACIONES DE ACCIÓN INMEDIATA.
+    
+    Genera un JSON que cumpla estrictamente con la interfaz ManagementDeepAnalysis.
+    `;
+    const response = await generateWithFallback({
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    preparednessScore: { type: "number" },
+                    contingencyPlanAudit: { type: "string" },
+                    evacuationProtocols: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
+                    commandChain: { type: "object", properties: { clarity: { enum: ["Clara", "Ambiguo", "Inexistente"] }, recommendations: { type: "array", items: { type: "string" } } } },
+                    responseLogistics: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
+                    communicationSystemsAudit: { type: "string" },
+                    actionableRecommendations: { type: "array", items: { type: "string" } }
+                },
+                required: ["preparednessScore", "contingencyPlanAudit", "actionableRecommendations"]
+            }
+        }
+    });
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    throw new Error("Failed Management Analysis");
+};
+
 export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData: ProjectData): Promise<BottleneckDeepAnalysis> => {
     const prompt = `
     Analiza este cuello de botella legal/técnico:
@@ -1203,10 +1341,37 @@ export const analyzeResourceSufficiency = async (projectData: ProjectData): Prom
 };
 
 export const analyzeFinancialProtectionDeep = async (projectData: ProjectData): Promise<FinancialProtectionDeepAnalysis> => {
-    const prompt = `Analiza la protección financiera (Seguros) del proyecto ${projectData.projectName}. Pólizas: ${JSON.stringify(projectData.insurancePolicies)}. Output JSON matching FinancialProtectionDeepAnalysis interface.`;
-    const response = await generateFast({
+    const prompt = `
+    Eres un Experto en Riesgo Financiero y Seguros (UNGRD).
+    Analiza la protección financiera del proyecto: ${projectData.projectName}.
+    Pólizas actuales: ${JSON.stringify(projectData.insurancePolicies)}.
+    Contexto: ${projectData.ungrdAnalysis.reduction.financialProtection?.observation}.
+
+    TAREA:
+    1. Audita la EFICIENCIA de la cobertura actual frente a los riesgos del proyecto.
+    2. Identifica BRECHAS DE COBERTURA (Gaps).
+    3. Identifica redundancias o seguros innecesarios.
+    4. Recomienda INSTRUMENTOS FINANCIEROS (Pólizas de cumplimiento, Seguros Paramétricos, Bonos Catastróficos si aplica).
+    5. Realiza una EVALUACIÓN ESTRATÉGICA.
+
+    Genera un JSON que cumpla estrictamente con la interfaz FinancialProtectionDeepAnalysis.
+    `;
+    const response = await generateWithFallback({
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: "object",
+                properties: {
+                    efficiencyScore: { type: "number" },
+                    coverageGaps: { type: "array", items: { type: "string" } },
+                    redundancies: { type: "array", items: { type: "string" } },
+                    recommendedInstruments: { type: "array", items: { type: "string" } },
+                    strategicAssessment: { type: "string" }
+                },
+                required: ["efficiencyScore", "coverageGaps", "recommendedInstruments", "strategicAssessment"]
+            }
+        }
     });
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Financial Protection Analysis");
@@ -1341,77 +1506,6 @@ export const analyzeContractorRisk = async (projectData: ProjectData): Promise<C
     }
 };
 
-export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<CorrectiveDeepAnalysis> => {
-    const corrective = projectData.ungrdAnalysis?.reduction?.corrective;
-    const hasMitigationWorks = corrective?.hasMitigationWorks ? 'Sí' : 'No';
-    const isBioengineering = corrective?.isBioengineering ? 'Sí' : 'No';
-    const threatType = corrective?.threatType || 'No especificada';
-    const workType = corrective?.workType || 'No especificado';
-    const beneficiaries = corrective?.beneficiaries || 'No especificados';
-    const observation = corrective?.observation || 'Sin observaciones previas';
-    const techAnalysis = corrective?.technicalAnalysis;
-    const viabilityScore = techAnalysis?.viabilityScore || 0;
-    const judgment = techAnalysis?.judgment || 'Pendiente';
-    const strengths = techAnalysis?.strengths?.join(', ') || 'No identificadas';
-    const weaknesses = techAnalysis?.weaknesses?.join(', ') || 'No identificadas';
-
-    const milestonesSummary = projectData.milestones?.slice(0, 10).map(m => `- ${m.description} (Costo: $${m.estimatedCost?.toLocaleString() || 0})`).join('\n') || 'No hay actividades';
-
-    const prompt = `
-    ROL: INGENIERO FORENSE ESPECIALISTA EN INTERVENCIÓN CORRECTIVA (UNGRD - Ley 1523 de 2012).
-    
-    PROYECTO: ${projectData.projectName}
-    UBICACIÓN: ${projectData.location?.municipality || 'N/A'}, ${projectData.location?.department || 'N/A'}
-    TIPO DE PROYECTO: ${projectData.projectType || 'Mitigación'}
-    OBJETIVO: ${projectData.generalObjective || 'No especificado'}
-    PRESUPUESTO TOTAL: $${projectData.totalBudget?.toLocaleString() || 0}
-    
-    ANÁLISIS CORRECTIVO PREVIO (Extraído del documento):
-    - ¿Tiene obras de mitigación?: ${hasMitigationWorks}
-    - ¿Usa Bioingeniería?: ${isBioengineering}
-    - Tipo de Amenaza: ${threatType}
-    - Tipo de Obra: ${workType}
-    - Beneficiarios: ${beneficiaries}
-    - Observación: ${observation}
-    
-    ANÁLISIS TÉCNICO PREVIO:
-    - Score de Viabilidad: ${viabilityScore}/100
-    - Juicio Técnico: ${judgment}
-    - Fortalezas Identificadas: ${strengths}
-    - Debilidades Identificadas: ${weaknesses}
-    
-    ACTIVIDADES PRINCIPALES:
-    ${milestonesSummary}
-    
-    TAREA:
-    1. **threatDiagnosis**: Diagnóstico técnico detallado de la amenaza real (geotécnica, hidrológica, etc.) y por qué la solución propuesta es necesaria.
-    2. **engineeringSolutionAudit**: Auditoría de Ingeniería de Valor. ¿Es la solución propuesta la más eficiente financieramente? (Crítica de materiales, procesos y sobredimensionamientos).
-    3. **technicalRigorScore** (0-100): Evalúa el rigor técnico del diseño.
-    4. **vulnerabilityAssessment**: Vulnerabilidad residual tras la obra.
-    5. **alternativeSolutions**: Proporciona 2-3 soluciones alternativas QUE BUSQUEN EL AHORRO SIN PERDER SEGURIDAD. Cada una debe incluir impacto de costo estimado (ej: "-15% CAPEX").
-    6. **riskOfFailure**: Evaluación del riesgo de fallo estructural o funcional.
-    7. **holisticRecommendations**: Recomendaciones para optimizar el capital público invertido.
-    
-    FORMATO DE SALIDA: JSON estricto compatible con CorrectiveDeepAnalysis:
-    {
-        "threatDiagnosis": string,
-        "engineeringSolutionAudit": string,
-        "technicalRigorScore": number,
-        "vulnerabilityAssessment": string,
-        "alternativeSolutions": [{ "solutionName": string, "description": string, "resilienceScore": number, "estimatedCostImpact": string, "pros": string[], "cons": string[] }],
-        "resourceOptimizationAudit": string,
-        "costBenefitAnalysis": string,
-        "riskOfFailure": string,
-        "holisticRecommendations": string[]
-    }
-    `;
-    const response = await generateFast({
-        contents: prompt,
-        config: { responseMimeType: "application/json", temperature: 0.3 }
-    }, 60000);
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
-    throw new Error("Failed Corrective Deep Analysis");
-};
 
 export const analyzeCriticalPath = async (milestones: ProjectMilestone[], context: { name: string, objective: string }): Promise<{ updatedMilestones: ProjectMilestone[], analysisSummary: string }> => {
     const prompt = `
@@ -1440,102 +1534,7 @@ export const analyzeCriticalPath = async (milestones: ProjectMilestone[], contex
     throw new Error("Failed CPM Analysis");
 };
 
-export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<KnowledgeDeepAnalysis> => {
-    const risksSummary = projectData.risks?.slice(0, 10).map(r => `- ${r.risk} (Prob: ${r.probability}, Impacto: ${r.impact})`).join('\n') || 'No hay riesgos documentados';
-    const scenariosIdentified = projectData.ungrdAnalysis?.knowledge?.scenariosIdentified?.join(', ') || 'No identificados';
-    const hasRiskAnalysis = projectData.ungrdAnalysis?.knowledge?.hasRiskAnalysis ? 'Sí' : 'No';
-    const observation = projectData.ungrdAnalysis?.knowledge?.observation || 'Sin observaciones previas';
 
-    const prompt = `
-    ROL: ESPECIALISTA EN GESTIÓN DEL CONOCIMIENTO DEL RIESGO (UNGRD - Ley 1523 de 2012).
-    
-    PROYECTO: ${projectData.projectName}
-    UBICACIÓN: ${projectData.location?.municipality || 'N/A'}, ${projectData.location?.department || 'N/A'}
-    COORDENADAS: Lat ${projectData.location?.latitude || 0}, Lng ${projectData.location?.longitude || 0}
-    TIPO DE PROYECTO: ${projectData.projectType || 'Mitigación'}
-    OBJETIVO: ${projectData.generalObjective || 'No especificado'}
-    
-    ANÁLISIS PREVIO EXTRAÍDO:
-    - ¿Tiene análisis de riesgo?: ${hasRiskAnalysis}
-    - Escenarios Identificados: ${scenariosIdentified}
-    - Observación Preliminar: ${observation}
-    
-    RIESGOS DOCUMENTADOS:
-    ${risksSummary}
-    
-    TAREA:
-    1. **overallKnowledgeScore** (0-100): Evalúa qué tan bien el proyecto comprende y documenta el riesgo que busca mitigar.
-    2. **riskCharacterization**: Describe técnicamente la amenaza (tipo de amenaza, recurrencia histórica, magnitud potencial).
-    3. **modelingAlternatives**: Proporciona 2-3 alternativas de modelamiento de la amenaza (ej: modelos hidráulicos, geotécnicos, etc.) con pros, contras, complejidad, tipo y costo estimado.
-    4. **monitoringAlternatives**: Proporciona 2-3 alternativas de monitoreo/instrumentación (ej: inclinómetros, SAT, IoT, drones) con pros, contras y costo estimado.
-    5. **criticalDataGaps**: Identifica 2-4 vacíos críticos de información que deben ser resueltos, su criticidad ('Alta', 'Media'), impacto y plan de acción.
-    
-    FORMATO DE SALIDA: JSON estricto compatible con KnowledgeDeepAnalysis:
-    {
-        "overallKnowledgeScore": number,
-        "riskCharacterization": string,
-        "modelingAlternatives": [{ "name": string, "type": string, "complexity": string, "estimatedCost": string, "pros": string[], "cons": string[] }],
-        "monitoringAlternatives": [{ "name": string, "type": string, "complexity": string, "estimatedCost": string, "pros": string[], "cons": string[] }],
-        "criticalDataGaps": [{ "gap": string, "criticality": "Alta" | "Media", "impact": string, "actionPlan": string }]
-    }
-    `;
-    const response = await generateFast({
-        contents: prompt,
-        config: { responseMimeType: "application/json", temperature: 0.3 }
-    }, 60000);
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
-    throw new Error("Failed Knowledge Analysis");
-};
-
-export const analyzeManagementDeep = async (projectData: ProjectData): Promise<ManagementDeepAnalysis> => {
-    const hasContingencyPlan = projectData.ungrdAnalysis?.management?.hasContingencyPlan ? 'Sí' : 'No';
-    const protocols = projectData.ungrdAnalysis?.management?.protocols?.join(', ') || 'No especificados';
-    const observation = projectData.ungrdAnalysis?.management?.observation || 'Sin observaciones previas';
-    const risksSummary = projectData.risks?.slice(0, 5).map(r => `- ${r.risk}`).join('\n') || 'No documentados';
-    const stakeholdersCount = projectData.stakeholders?.length || 0;
-    const bottlenecksSummary = projectData.bottlenecks?.slice(0, 3).map(b => `- ${b.processName}: ${b.status}`).join('\n') || 'Sin cuellos de botella';
-
-    const prompt = `
-    ROL: ESPECIALISTA EN MANEJO DE DESASTRES (UNGRD - Ley 1523 de 2012).
-    
-    PROYECTO: ${projectData.projectName}
-    UBICACIÓN: ${projectData.location?.municipality || 'N/A'}, ${projectData.location?.department || 'N/A'}
-    TIPO DE PROYECTO: ${projectData.projectType || 'Mitigación'}
-    OBJETIVO: ${projectData.generalObjective || 'No especificado'}
-    
-    ANÁLISIS PREVIO EXTRAÍDO:
-    - ¿Tiene Plan de Contingencia?: ${hasContingencyPlan}
-    - Protocolos Identificados: ${protocols}
-    - Observación Preliminar: ${observation}
-    
-    CONTEXTO:
-    - Número de Actores Clave: ${stakeholdersCount}
-    - Riesgos Principales: 
-    ${risksSummary}
-    - Cuellos de Botella Actuales:
-    ${bottlenecksSummary}
-    
-    TAREA:
-    1. **preparednessScore** (0-100): Evalúa el nivel de preparación para respuesta ante un evento adverso durante o después del proyecto.
-    2. **contingencyPlanAudit**: Audita el plan de contingencia existente (o la falta del mismo) con recomendaciones específicas.
-    3. **responseLogistics**: Identifica fortalezas (strengths) y debilidades (weaknesses) en la logística de respuesta.
-    4. **actionableRecommendations**: Proporciona 3-5 recomendaciones accionables e inmediatas para mejorar la preparación.
-    
-    FORMATO DE SALIDA: JSON estricto compatible con ManagementDeepAnalysis:
-    {
-        "preparednessScore": number,
-        "contingencyPlanAudit": string,
-        "responseLogistics": { "strengths": string[], "weaknesses": string[] },
-        "actionableRecommendations": string[]
-    }
-    `;
-    const response = await generateFast({
-        contents: prompt,
-        config: { responseMimeType: "application/json", temperature: 0.3 }
-    }, 60000);
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
-    throw new Error("Failed Management Analysis");
-};
 
 export const analyzeValueEngineering = async (projectData: ProjectData): Promise<ValueEngineeringAction[]> => {
     const prompt = `
