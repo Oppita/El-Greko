@@ -721,86 +721,42 @@ export const updateProjectWithNewData = async (currentData: ProjectData, input: 
         3.  **Generar Racional (efficiencyRationale)**: Explica en una frase técnica por qué diste ese veredicto (ej: "Se ejecutó el 10% del presupuesto pero el avance físico solo subió 1%").
         4.  **Actualizar Riesgos**: Si el documento revela nuevos problemas, agrégalos.
 
-        SALIDA JSON (Strict Schema):
+       GENERA UN JSON QUE CUMPLA ESTRICTAMENTE CON ESTA ESTRUCTURA (NO AGREGUES TEXTO ADICIONAL):
+        {
+          "updatedFields": {
+            "progressPercentage": number, // opcional
+            "spentBudget": number, // opcional
+            "milestones": [ { "description": string, "status": string, "progress": number } ], // opcional
+            "risks": [ { "risk": string, "probability": "High"|"Medium"|"Low", "impact": "High"|"Medium"|"Low", "mitigation": string } ] // opcional
+          },
+          "evolutionLog": {
+            "date": string,
+            "summary": string,
+            "efficiencyVerdict": "Optimo" | "Regular" | "Critico",
+            "efficiencyRationale": string,
+            "changes": [ { "field": string, "oldValue": string, "newValue": string, "comment": string } ]
+          }
+        }
         `;
 
         const parts = [];
         if (input.type === 'pdf') {
             parts.push({ inlineData: { mimeType: 'application/pdf', data: input.content } });
         } else if (input.type === 'image') {
-            // Assume JPEG for simplicity, or we could pass mimeType in the input object if needed. 
-            // For now, let's treat generic base64 images as image/jpeg or standard image blob
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: input.content } });
             parts.push({ text: "NUEVA EVIDENCIA VISUAL (FOTO DE OBRA/REPORTE): Analiza esta imagen en busca de progreso físico, maquinaria activa o problemas visibles." });
         } else {
-            parts.push({ text: `NUEVA EVIDENCIA (TEXTO/CORREO):\n${input.content}` });
+            parts.push({ text: `NUEVA EVIDENCIA (TEXTO/CORREO/CHAT/TRANSCRIPCION): \n"${input.content}"\n\n(Trata este texto como una fuente de verdad directa desde el campo/obra).` });
         }
         parts.push({ text: prompt });
 
-        // Use Fast Generation for updates
-        const response = await generateFast({
+        // Use generateWithFallback (Pro -> Flash) for better reasoning on PDFs
+        // Removed strict responseSchema to avoid "Constraint is too tall" on large updates
+        const response = await generateWithFallback({
             contents: { parts },
             config: {
                 temperature: 0.1,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        updatedFields: {
-                            type: Type.OBJECT,
-                            properties: {
-                                progressPercentage: { type: Type.NUMBER },
-                                spentBudget: { type: Type.NUMBER },
-                                milestones: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            description: { type: Type.STRING },
-                                            status: { type: Type.STRING },
-                                            progress: { type: Type.NUMBER }
-                                        }
-                                    }
-                                },
-                                risks: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            risk: { type: Type.STRING },
-                                            probability: { type: Type.STRING },
-                                            impact: { type: Type.STRING },
-                                            mitigation: { type: Type.STRING }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        evolutionLog: {
-                            type: Type.OBJECT,
-                            properties: {
-                                date: { type: Type.STRING },
-                                summary: { type: Type.STRING },
-                                efficiencyVerdict: { type: Type.STRING, enum: ['Optimo', 'Regular', 'Critico'] },
-                                efficiencyRationale: { type: Type.STRING },
-                                changes: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            field: { type: Type.STRING },
-                                            oldValue: { type: Type.STRING },
-                                            newValue: { type: Type.STRING },
-                                            comment: { type: Type.STRING }
-                                        }
-                                    }
-                                }
-                            },
-                            required: ["date", "summary", "changes", "efficiencyVerdict", "efficiencyRationale"]
-                        }
-                    },
-                    required: ["updatedFields", "evolutionLog"]
-                }
+                responseMimeType: "application/json"
             }
         });
 
@@ -1047,40 +1003,14 @@ export const analyzeActivityDeep = async (activity: ProjectMilestone, projectCon
         SALIDA: JSON Estricto.
         `;
 
-        // Switch to Fast Generation
-        const response = await generateFast({
+        // Switch to Pro Generation (Chain-of-Thought)
+        // Optimized for Value Engineering logic
+        const response = await generateWithFallback({
             contents: prompt,
             config: {
-                temperature: 0.3,
+                temperature: 0.1, // Lower temperature for technical precision
                 responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        optimizationStrategy: { type: Type.STRING },
-                        suggestedTechnologies: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    name: { type: Type.STRING },
-                                    benefit: { type: Type.STRING }
-                                }
-                            }
-                        },
-                        specificExecutionRisks: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    risk: { type: Type.STRING },
-                                    mitigation: { type: Type.STRING }
-                                }
-                            }
-                        },
-                        efficiencyGainEstimate: { type: Type.STRING }
-                    },
-                    required: ["optimizationStrategy", "suggestedTechnologies", "specificExecutionRisks", "efficiencyGainEstimate"]
-                }
+                // Removed strict schema to allow for richer, longer content in fields without hitting context limits
             }
         });
 
@@ -1370,9 +1300,12 @@ export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData:
     
     Genera JSON con: rootCause, legalFramework (Leyes Colombia), financialImpactEstimate, strategicActions (array strings), probabilityOfResolution (number).
     `;
-    const response = await generateFast({
+    const response = await generateWithFallback({
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+        }
     });
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Bottleneck Analysis");
@@ -1613,30 +1546,14 @@ TAREA:
     }
 ]
     `;
-    const response = await generateFast({
+    const response = await generateWithFallback({
         contents: prompt,
         config: {
             temperature: 0.2,
             responseMimeType: "application/json",
-            responseSchema: {
-                type: "array",
-                items: {
-                    type: "object",
-                    properties: {
-                        id: { type: "string" },
-                        description: { type: "string" },
-                        originalCost: { type: "number" },
-                        optimizedCost: { type: "number" },
-                        savings: { type: "number" },
-                        technicalTradeoff: { type: "string" },
-                        implementationComplexity: { type: "string", enum: ["Low", "Medium", "High"] },
-                        status: { type: "string", enum: ["Planned", "Approved", "Implemented"] }
-                    },
-                    required: ["id", "description", "originalCost", "optimizedCost", "savings", "technicalTradeoff", "implementationComplexity", "status"]
-                }
-            }
+            // Removed strict schema for creative engineering solutions
         }
-    }, 60000);
+    }, 120000); // 120s timeout for deep thinking
     if (response.text) return JSON.parse(cleanJsonString(response.text));
     throw new Error("Failed Value Engineering Analysis");
 };
@@ -1700,4 +1617,28 @@ export const getRecentProjects = async (limit: number = 10): Promise<SavedProjec
         console.error('Error fetching projects:', err);
         return [];
     }
+};
+
+export const analyzeClimateContext = async (location: { latitude: number, longitude: number, municipality: string }): Promise<{ riskLevel: string, summary: string, forecast: string }> => {
+    // Simulated Real-Time Weather Data Injection or AI Inference based on location/season
+    const prompt = `
+    ACTÚA COMO: METEORÓLOGO DE INFRAESTRUCTURA Y GESTIÓN DE RIESGOS.
+    UBICACIÓN: ${location.municipality} (Lat: ${location.latitude}, Long: ${location.longitude}).
+    FECHA ACTUAL: ${new Date().toLocaleDateString()}.
+
+    TAREA:
+    1. Basado en la ubicación y la fecha, estima el clima probable actual (Estación lluviosa/seca).
+    2. Identifica riesgos inmediatos para una obra civil (Deslizamientos, inundación, ola de calor).
+    3. Genera un "Pronóstico Operativo" para los próximos 7 días.
+
+    OUTPUT JSON: { riskLevel: "Alto"|"Medio"|"Bajo", summary: string, forecast: string }
+    `;
+
+    const response = await generateFast({
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+    });
+
+    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    return { riskLevel: "Bajo", summary: "Clima favorable estimado.", forecast: "Sin lluvias previstas." };
 };

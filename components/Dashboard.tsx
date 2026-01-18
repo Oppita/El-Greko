@@ -64,7 +64,7 @@ import {
     MoreHorizontal
 } from 'lucide-react';
 import { ProjectData, ChatMessage, RiskItem, Bottleneck, ProjectMilestone, GrekoAction, PMBOKPrinciple, PMBOKDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, FinancialProtectionDeepAnalysis, ResourceInventory, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, Personnel, Machinery, Equipment, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, EvolutionLog, CapexOpexDeepAnalysis, ConvergenceMetrics, ValueEngineeringAction, MacroeconomicData, INITIAL_PROJECT_DATA } from '../types';
-import { askProjectQuestion, generateMitigationSuggestion, analyzePOTAlignment, analyzeGrekoCronos, analyzePMBOK7, analyzePMBOKPrincipleDeep, analyzeBottleneckDeep, generateAdministrativeDocument, analyzeResourceSufficiency, analyzeFinancialProtectionDeep, analyzeFinancialDeep, analyzeContractorRisk, analyzeCorrectiveDeep, analyzeCriticalPath, analyzeActivityDeep, analyzeKnowledgeDeep, analyzeManagementDeep, searchProjectInfo, updateProjectWithNewData, analyzeCapexOpexDeep } from '../services/geminiService';
+import { askProjectQuestion, generateMitigationSuggestion, analyzePOTAlignment, analyzeGrekoCronos, analyzePMBOK7, analyzePMBOKPrincipleDeep, analyzeBottleneckDeep, generateAdministrativeDocument, analyzeResourceSufficiency, analyzeFinancialProtectionDeep, analyzeFinancialDeep, analyzeContractorRisk, analyzeCorrectiveDeep, analyzeCriticalPath, analyzeActivityDeep, analyzeKnowledgeDeep, analyzeManagementDeep, searchProjectInfo, updateProjectWithNewData, analyzeCapexOpexDeep, analyzeClimateContext } from '../services/geminiService';
 
 interface DashboardProps {
     data: ProjectData;
@@ -728,6 +728,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
     // Risk Matrix Filter State
     const [riskFilter, setRiskFilter] = useState<{ prob: string, imp: string } | null>(null);
 
+    // Climate Widget State
+    const [climateData, setClimateData] = useState<{ riskLevel: string, summary: string, forecast: string } | null>(null);
+    const [isAnalyzingClimate, setIsAnalyzingClimate] = useState(false);
+
+    const handleClimateCheck = async () => {
+        setIsAnalyzingClimate(true);
+        try {
+            const result = await analyzeClimateContext(data.location);
+            setClimateData(result);
+        } catch (e) {
+            console.error("Climate analysis failed", e);
+        } finally {
+            setIsAnalyzingClimate(false);
+        }
+    };
+
     const [resourceInventory, setResourceInventory] = useState<ResourceInventory>(data.resourceInventory || { personnel: [], machinery: [], equipment: [] });
     const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
     const [financialAnalysisResult, setFinancialAnalysisResult] = useState<FinancialDeepAnalysis | null>(null);
@@ -1204,15 +1220,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             }
 
             const updatedData = await updateProjectWithNewData(data, input);
-            onUpdate(updatedData);
 
-            if (updatedData.evolutionHistory && updatedData.evolutionHistory.length > 0) {
+            // UX: Check if we actually got a history log
+            if (!updatedData.evolutionHistory || updatedData.evolutionHistory.length === 0 || updatedData.evolutionHistory[0].changes.length === 0) {
+                setEvolutionError("El análisis no detectó cambios significativos. Intenta con una descripción más detallada o un documento más completo.");
+                // Still update data just in case
+                onUpdate(updatedData);
+            } else {
+                onUpdate(updatedData);
                 setEvolutionResult(updatedData.evolutionHistory[0]);
+                setIsEvolutionModalOpen(false); // Close only on success
             }
 
-            setIsEvolutionModalOpen(false);
         } catch (e: any) {
-            setEvolutionError(e.message);
+            console.error(e);
+            setEvolutionError(e.message || "Error al procesar la evidencia.");
         } finally {
             setIsEvolving(false);
         }
@@ -2037,6 +2059,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                     <p className="text-slate-500 text-sm max-w-2xl">{data.generalObjective}</p>
                                     <div className="flex items-center gap-4 mt-4 text-sm text-slate-500 font-medium">
                                         <span className="flex items-center gap-1"><MapPin size={16} /> {data.location.municipality}, {data.location.department}</span>
+                                        <div className="relative">
+                                            <button onClick={handleClimateCheck} disabled={isAnalyzingClimate} className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold transition-all ${climateData ? (climateData.riskLevel === 'Alto' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700') : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                                                {isAnalyzingClimate ? <Loader2 size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+                                                {climateData ? `Clima: ${climateData.riskLevel}` : 'Ver Clima en Vivo'}
+                                            </button>
+                                            {climateData && (
+                                                <div className="absolute top-full left-0 mt-2 bg-white p-4 rounded-xl shadow-xl border border-slate-200 z-50 w-64 animate-fade-in text-left">
+                                                    <h5 className="font-bold text-slate-800 text-xs uppercase mb-2">Pronóstico Operativo</h5>
+                                                    <p className="text-xs text-slate-600 mb-2">{climateData.summary}</p>
+                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100 text-[10px] font-mono text-slate-500">{climateData.forecast}</div>
+                                                </div>
+                                            )}
+                                        </div>
                                         <span className="flex items-center gap-1"><Building2 size={16} /> {data.contractor}</span>
                                     </div>
                                 </div>
