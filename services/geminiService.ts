@@ -20,7 +20,19 @@ if (!API_KEY) {
     console.error('GEMINI API KEY IS MISSING. Check your .env file or GitHub Secrets configuration.');
 }
 
-const genAI = new GoogleGenerativeAI(API_KEY);
+// VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
+// This helps verify if the deployed code is actually fresh.
+export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:15 PM (Fix V1 Array)";
+
+let genAI: GoogleGenerativeAI;
+try {
+    console.log("Initializing Gemini SDK V1 with Key length:", API_KEY ? API_KEY.length : 0);
+    if (!API_KEY) console.error("CRITICAL: GEMINI API KEY IS EMPTY");
+    genAI = new GoogleGenerativeAI(API_KEY);
+    console.log("Gemini SDK Initialized Successfully.", genAI);
+} catch (initError) {
+    console.error("CRITICAL ERROR INITIALIZING GEMINI SDK:", initError);
+}
 
 const SYSTEM_INSTRUCTION = `
 ROL: DIRECTOR FINANCIERO (CFO) Y AUDITOR FORENSE DE INFRAESTRUCTURA (Experto UNGRD).
