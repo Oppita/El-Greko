@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
 const getApiKey = () => {
@@ -20,7 +20,7 @@ if (!API_KEY) {
     console.error('GEMINI API KEY IS MISSING. Check your .env file or GitHub Secrets configuration.');
 }
 
-const genAI: any = new GoogleGenAI({ apiKey: API_KEY } as any);
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 const SYSTEM_INSTRUCTION = `
 ROL: DIRECTOR FINANCIERO (CFO) Y AUDITOR FORENSE DE INFRAESTRUCTURA (Experto UNGRD).
@@ -935,30 +935,30 @@ export const analyzePOTAlignment = async (projectData: ProjectData, potPdfBase64
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
-                    type: Type.OBJECT,
+                    type: SchemaType.OBJECT,
                     properties: {
-                        complianceScore: { type: Type.NUMBER },
+                        complianceScore: { type: SchemaType.NUMBER },
                         landUseRestrictions: {
-                            type: Type.ARRAY,
+                            type: SchemaType.ARRAY,
                             items: {
-                                type: Type.OBJECT,
+                                type: SchemaType.OBJECT,
                                 properties: {
-                                    issue: { type: Type.STRING },
-                                    mitigation: { type: Type.STRING }
+                                    issue: { type: SchemaType.STRING },
+                                    mitigation: { type: SchemaType.STRING }
                                 }
                             }
                         },
                         riskZonesIdentified: {
-                            type: Type.ARRAY,
+                            type: SchemaType.ARRAY,
                             items: {
-                                type: Type.OBJECT,
+                                type: SchemaType.OBJECT,
                                 properties: {
-                                    issue: { type: Type.STRING },
-                                    mitigation: { type: Type.STRING }
+                                    issue: { type: SchemaType.STRING },
+                                    mitigation: { type: SchemaType.STRING }
                                 }
                             }
                         },
-                        recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } }
                     }
                 }
             }
