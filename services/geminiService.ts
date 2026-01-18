@@ -3,15 +3,24 @@ import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
 const getApiKey = () => {
+    let key = '';
     try {
         // @ts-ignore
-        return import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+        key = import.meta.env.VITE_GEMINI_API_KEY || '';
     } catch (e) {
-        return process.env.VITE_GEMINI_API_KEY || '';
+        // Fallback for non-Vite environments
+        key = process?.env?.VITE_GEMINI_API_KEY || '';
     }
+    return key;
 };
 
-const genAI: any = new GoogleGenAI({ apiKey: getApiKey() } as any);
+const API_KEY = getApiKey();
+
+if (!API_KEY) {
+    console.error('GEMINI API KEY IS MISSING. Check your .env file or GitHub Secrets configuration.');
+}
+
+const genAI: any = new GoogleGenAI({ apiKey: API_KEY } as any);
 
 const SYSTEM_INSTRUCTION = `
 ROL: DIRECTOR FINANCIERO (CFO) Y AUDITOR FORENSE DE INFRAESTRUCTURA (Experto UNGRD).
