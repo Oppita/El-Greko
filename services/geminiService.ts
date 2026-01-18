@@ -22,7 +22,7 @@ if (!API_KEY) {
 
 // VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
 // This helps verify if the deployed code is actually fresh.
-export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:25 PM (Fix API Syntax)";
+export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:40 PM (Upgrade to Gemini 2.5)";
 
 let genAI: GoogleGenerativeAI;
 try {
@@ -628,7 +628,7 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
     const sysInstruction = requestParams.generationConfig?.systemInstruction || requestParams.config?.systemInstruction;
 
     const modelPro = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro",
+        model: "gemini-2.5-pro",
         systemInstruction: sysInstruction
     });
 
@@ -652,7 +652,7 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
         // Attempt 2: Gemini 1.5 Flash (High Stability/Speed)
         try {
             const modelFlash = genAI.getGenerativeModel({
-                model: "gemini-1.5-flash",
+                model: "gemini-2.5-flash",
                 systemInstruction: sysInstruction
             });
             const result = await modelFlash.generateContent(generateContentRequest);
@@ -669,7 +669,7 @@ const generateFast = async (configParams: any, timeoutMs: number = 30000) => {
         const sysInstruction = configParams.generationConfig?.systemInstruction || configParams.config?.systemInstruction;
 
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.5-flash",
             systemInstruction: sysInstruction
         });
 
@@ -921,7 +921,7 @@ export const searchProjectInfo = async (projectData: ProjectData): Promise<Searc
         const query = `Busca información actual, noticias recientes, controversias y estado real del proyecto: ${projectData.projectName} en ${projectData.location.municipality}. Contratista: ${projectData.contractor}. Resumen ejecutivo.`;
 
         // Use Google Search Grounding with Flash 1.5
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         const response = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: query }] }],
             tools: [{ googleSearchRetrieval: {} } as any],

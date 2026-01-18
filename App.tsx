@@ -35,7 +35,7 @@ const App: React.FC = () => {
       } else if (err.message?.includes('API_KEY_INVALID')) {
         setError("La clave de API de Gemini no es válida. Revisa el archivo .env.");
       } else {
-        setError("Ocurrió un error al procesar la información. Asegúrate de que el PDF sea válido y legible o que el texto no sea demasiado extenso.");
+        setError(`DEBUG ERROR: ${err.message} - ${err.toString()}`);
       }
     } finally {
       setIsLoading(false);

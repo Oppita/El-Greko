@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Invalid JSON payload received. Closing quote expected in string.\n\n^",
+    "status": "INVALID_ARGUMENT"
+  }
+}
