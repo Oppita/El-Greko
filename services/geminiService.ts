@@ -607,20 +607,43 @@ const sanitizeProjectData = (data: any): ProjectData => {
 };
 
 // --- ROBUST GENERATION HELPER ---
-const generateWithFallback = async (configParams: any, timeoutMs: number = 180000) => {
+const generateWithFallback = async (requestParams: any, timeoutMs: number = 180000) => {
     // Attempt 1: Gemini 1.5 Pro (High Reasoning)
-    const modelPro = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    // Pass systemInstruction during model initialization for V1 if preferred, or in request if supported.
+    // Ideally, for V1, systemInstruction is best passed at getGenerativeModel.
+    // However, to avoid refactoring everything, we'll try to extract it from requestParams if present.
+
+    const sysInstruction = requestParams.generationConfig?.systemInstruction || requestParams.config?.systemInstruction;
+
+    const modelPro = genAI.getGenerativeModel({
+        model: "gemini-1.5-pro",
+        systemInstruction: sysInstruction
+    });
+
+    // Clean up request params for generateContent (remove config/systemInstruction wrapper)
+    const actualGenerationConfig = {
+        ...(requestParams.generationConfig || requestParams.config || {}),
+    };
+    delete actualGenerationConfig.systemInstruction; // Cleanup
+
+    const generateContentRequest = {
+        contents: Array.isArray(requestParams.contents) ? requestParams.contents : [{ role: 'user', parts: requestParams.contents.parts || [] }],
+        generationConfig: actualGenerationConfig
+    };
 
     try {
-        const result = await modelPro.generateContent(configParams);
+        const result = await modelPro.generateContent(generateContentRequest);
         return result.response;
     } catch (error: any) {
         console.warn("Gemini 1.5 Pro failed. Retrying with Gemini 1.5 Flash...", error);
 
         // Attempt 2: Gemini 1.5 Flash (High Stability/Speed)
         try {
-            const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const result = await modelFlash.generateContent(configParams);
+            const modelFlash = genAI.getGenerativeModel({
+                model: "gemini-1.5-flash",
+                systemInstruction: sysInstruction
+            });
+            const result = await modelFlash.generateContent(generateContentRequest);
             return result.response;
         } catch (err2) {
             throw err2;
@@ -631,8 +654,24 @@ const generateWithFallback = async (configParams: any, timeoutMs: number = 18000
 // --- FAST GENERATION HELPER (NO FALLBACK, FLASH ONLY) ---
 const generateFast = async (configParams: any, timeoutMs: number = 30000) => {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const result = await model.generateContent(configParams);
+        const sysInstruction = configParams.generationConfig?.systemInstruction || configParams.config?.systemInstruction;
+
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: sysInstruction
+        });
+
+        const actualGenerationConfig = {
+            ...(configParams.generationConfig || configParams.config || {}),
+        };
+        delete actualGenerationConfig.systemInstruction;
+
+        const generateContentRequest = {
+            contents: Array.isArray(configParams.contents) ? configParams.contents : [{ role: 'user', parts: configParams.contents.parts || [] }],
+            generationConfig: actualGenerationConfig
+        };
+
+        const result = await model.generateContent(generateContentRequest);
         return result.response;
     } catch (error: any) {
         console.error("Fast generation failed:", error);
