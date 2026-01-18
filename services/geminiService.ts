@@ -22,7 +22,7 @@ if (!API_KEY) {
 
 // VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
 // This helps verify if the deployed code is actually fresh.
-export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:15 PM (Fix V1 Array)";
+export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:25 PM (Fix API Syntax)";
 
 let genAI: GoogleGenerativeAI;
 try {
@@ -721,8 +721,8 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
             }
         });
 
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
+        if (response.text()) {
+            const cleaned = cleanJsonString(response.text());
             try {
                 const parsedData = JSON.parse(cleaned);
                 return sanitizeProjectData(parsedData);
@@ -811,8 +811,8 @@ export const updateProjectWithNewData = async (currentData: ProjectData, input: 
             }
         });
 
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
+        if (response.text()) {
+            const cleaned = cleanJsonString(response.text());
             const result = JSON.parse(cleaned);
 
             // MERGE LOGIC WITH CALCULATED METRICS
@@ -904,8 +904,8 @@ export const analyzeCapexOpexDeep = async (projectData: ProjectData): Promise<Ca
             }
         }, 60000);
 
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
+        if (response.text()) {
+            const cleaned = cleanJsonString(response.text());
             return JSON.parse(cleaned);
         }
         throw new Error("No se pudo generar análisis CAPEX/OPEX.");
@@ -1015,8 +1015,8 @@ export const analyzePOTAlignment = async (projectData: ProjectData, potPdfBase64
             }
         }, 60000); // 60s timeout for PDF
 
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
+        if (response.text()) {
+            const cleaned = cleanJsonString(response.text());
             return JSON.parse(cleaned);
         }
         throw new Error("No se pudo analizar el POT.");
@@ -1065,8 +1065,8 @@ export const analyzeActivityDeep = async (activity: ProjectMilestone, projectCon
             }
         });
 
-        if (response.text) {
-            const cleaned = cleanJsonString(response.text);
+        if (response.text()) {
+            const cleaned = cleanJsonString(response.text());
             return JSON.parse(cleaned);
         }
         throw new Error("Fallo análisis de actividad");
@@ -1097,7 +1097,7 @@ export const askProjectQuestion = async (question: string, projectData: ProjectD
   `;
 
     const response = await generateFast({ contents: prompt });
-    return response.text || "No pude generar una respuesta.";
+    return response.text() || "No pude generar una respuesta.";
 };
 
 export const generateMitigationSuggestion = async (risk: RiskItem, projectData: ProjectData): Promise<string> => {
@@ -1109,7 +1109,7 @@ export const generateMitigationSuggestion = async (risk: RiskItem, projectData: 
   TAREA: Generar un plan de mitigación detallado, técnico y accionable.
   `;
     const response = await generateFast({ contents: prompt });
-    return response.text || "Plan de mitigación no generado.";
+    return response.text() || "Plan de mitigación no generado.";
 };
 
 export const analyzeGrekoCronos = async (milestones: ProjectMilestone[], projectData: ProjectData): Promise<GrekoCronosDeepAnalysis> => {
@@ -1126,7 +1126,7 @@ export const analyzeGrekoCronos = async (milestones: ProjectMilestone[], project
         config: { responseMimeType: "application/json" }
     });
 
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed");
 };
 
@@ -1168,7 +1168,7 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
         }
     });
 
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed PMBOK Analysis");
 };
 
@@ -1198,7 +1198,7 @@ export const analyzePMBOKPrincipleDeep = async (projectData: ProjectData, princi
             }
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Deep Dive");
 };
 
@@ -1249,7 +1249,7 @@ export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<Kn
             }
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Knowledge Analysis");
 };
 
@@ -1299,7 +1299,7 @@ export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<C
             }
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Corrective Analysis");
 };
 
@@ -1338,7 +1338,7 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
             }
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Management Analysis");
 };
 
@@ -1358,7 +1358,7 @@ export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData:
             temperature: 0.2
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Bottleneck Analysis");
 };
 
@@ -1368,7 +1368,7 @@ export const generateAdministrativeDocument = async (bottleneck: Bottleneck, doc
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Document Generation");
 };
 
@@ -1378,7 +1378,7 @@ export const analyzeResourceSufficiency = async (projectData: ProjectData): Prom
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Resource Analysis");
 };
 
@@ -1415,7 +1415,7 @@ export const analyzeFinancialProtectionDeep = async (projectData: ProjectData): 
             }
         }
     });
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Financial Protection Analysis");
 };
 
@@ -1482,7 +1482,7 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
             }
         }
     }, 60000);
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Financial Deep Analysis");
 };
 
@@ -1531,7 +1531,7 @@ export const analyzeContractorRisk = async (projectData: ProjectData): Promise<C
         }
     });
 
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Contractor Analysis");
 };
 
@@ -1553,8 +1553,8 @@ Contexto: ${context.name}.
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
-    if (response.text) {
-        const res = JSON.parse(cleanJsonString(response.text));
+    if (response.text()) {
+        const res = JSON.parse(cleanJsonString(response.text()));
         // Merge with original to keep other fields
         const merged = milestones.map(m => {
             const update = res.updatedMilestones.find((u: any) => u.desc === m.description || u.code === m.code);
@@ -1605,7 +1605,7 @@ TAREA:
             // Removed strict schema for creative engineering solutions
         }
     }, 120000); // 120s timeout for deep thinking
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     throw new Error("Failed Value Engineering Analysis");
 };
 
@@ -1690,6 +1690,6 @@ export const analyzeClimateContext = async (location: { latitude: number, longit
         config: { responseMimeType: "application/json" }
     });
 
-    if (response.text) return JSON.parse(cleanJsonString(response.text));
+    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
     return { riskLevel: "Bajo", summary: "Clima favorable estimado.", forecast: "Sin lluvias previstas." };
 };

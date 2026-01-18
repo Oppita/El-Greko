@@ -1225,16 +1225,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             if (!updatedData.evolutionHistory || updatedData.evolutionHistory.length === 0 || updatedData.evolutionHistory[0].changes.length === 0) {
                 setEvolutionError("El análisis no detectó cambios significativos. Intenta con una descripción más detallada o un documento más completo.");
                 // Still update data just in case
-                onUpdate(updatedData);
-            } else {
-                onUpdate(updatedData);
-                setEvolutionResult(updatedData.evolutionHistory[0]);
-                setIsEvolutionModalOpen(false); // Close only on success
             }
-
+            if (updatedData.evolutionHistory && updatedData.evolutionHistory.length > 0) {
+                setEvolutionResult(updatedData.evolutionHistory[0]);
+            }
+            onUpdate(updatedData);
+            setIsEvolutionModalOpen(false);
         } catch (e: any) {
-            console.error(e);
-            setEvolutionError(e.message || "Error al procesar la evidencia.");
+            setEvolutionError(`Error detallado: ${e.message || "Desconocido"}. Intenta de nuevo.`);
+            console.error("Evolution Error:", e);
         } finally {
             setIsEvolving(false);
         }
