@@ -32,13 +32,14 @@ export const AI_MODELS: Record<AIProvider, AIModelConfig> = {
         fallback: 'gpt-3.5-turbo',              // Cheaper alternative
         displayName: 'ChatGPT 4o Mini',
         company: 'OpenAI',
-        enabled: false                          // Set to true when API key is added
+        enabled: true                           // Enabled with provided key
     },
     xai: {
-        primary: 'grok-beta',
-        displayName: 'Grok Beta',
+        primary: 'grok-2-latest',
+        fallback: 'grok-beta',
+        displayName: 'Grok 2',
         company: 'xAI',
-        enabled: false                          // Set to true when API key is added
+        enabled: true                           // Enabled with provided key
     }
 };
 
