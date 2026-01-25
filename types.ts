@@ -653,6 +653,8 @@ export interface ProjectData {
     contractorProfile?: ContractorProfile;
     progressAudits?: ProgressAudit[];
     pmbokAnalysis?: PMBOKAnalysis;
+    financialDeepAnalysis?: FinancialDeepAnalysis; // NEW: CFO Audit
+    capexOpexDeepAnalysis?: CapexOpexDeepAnalysis; // NEW: Capex/Opex
     evolutionHistory?: EvolutionLog[]; // NEW: History of AI updates
     macroeconomicData: MacroeconomicData; // NEW: Macro Intelligence
 }

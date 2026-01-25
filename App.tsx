@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { InputSection } from './components/InputSection';
-import { analyzeProject, AnalysisInput, getRecentProjects, saveProjectToSupabase, SavedProject } from './services/geminiService';
+import { analyzeProject, AnalysisInput, getRecentProjects, saveProjectToSupabase, SavedProject, sanitizeProjectData } from './services/geminiService';
 import { ProjectData } from './types';
 import { LayoutDashboard, Clock, ChevronRight, Save, CheckCircle, Loader2 } from 'lucide-react';
 
@@ -68,7 +68,8 @@ const App: React.FC = () => {
   };
 
   const handleLoadProject = (savedProject: SavedProject) => {
-    setProjectData(savedProject.full_data);
+    const sanitized = sanitizeProjectData(savedProject.full_data);
+    setProjectData(sanitized);
   };
 
   return (

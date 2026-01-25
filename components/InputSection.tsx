@@ -39,6 +39,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
   const [inputText, setInputText] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<'gemini' | 'groq'>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
     if (file && file.type === 'application/pdf') {
       const reader = new FileReader();
       reader.onload = (e) => {
-        try { const result = e.target?.result as string; if (result && result.includes(',')) { const base64 = result.split(',')[1]; onAnalyze({ type: 'pdf', content: base64 }); } else { setLocalError("Error al leer PDF."); } } catch (err) { console.error("Error parsing file", err); setLocalError("Error al procesar archivo."); }
+        try { const result = e.target?.result as string; if (result && result.includes(',')) { const base64 = result.split(',')[1]; onAnalyze({ type: 'pdf', content: base64, provider: selectedModel }); } else { setLocalError("Error al leer PDF."); } } catch (err) { console.error("Error parsing file", err); setLocalError("Error al procesar archivo."); }
       };
       reader.onerror = () => { setLocalError("Error de lectura."); };
       reader.readAsDataURL(file);
@@ -68,7 +69,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
 
   const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); if (e.dataTransfer.files && e.dataTransfer.files[0]) { processFile(e.dataTransfer.files[0]); } }, []);
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => { e.preventDefault(); if (e.target.files && e.target.files[0]) { processFile(e.target.files[0]); } if (fileInputRef.current) { fileInputRef.current.value = ''; } };
-  const handleTextSubmit = (e: React.FormEvent) => { e.preventDefault(); if (inputText.trim()) { onAnalyze({ type: 'text', content: inputText }); } };
+  const handleTextSubmit = (e: React.FormEvent) => { e.preventDefault(); if (inputText.trim()) { onAnalyze({ type: 'text', content: inputText, provider: selectedModel }); } };
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-8">
@@ -92,6 +93,26 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
           </div>
 
           <div className="p-10 min-h-[450px] flex flex-col justify-center bg-gray-50/50 relative">
+
+            {/* Model Selector */}
+            <div className="flex justify-center mb-8">
+              <div className="flex bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm">
+                <button
+                  onClick={() => setSelectedModel('gemini')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'gemini' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-400 hover:bg-gray-50'}`}
+                >
+                  <Sparkles size={14} /> Gemini 1.5 Pro
+                </button>
+                <button
+                  onClick={() => setSelectedModel('groq')}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'groq' ? 'bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200' : 'text-gray-400 hover:bg-gray-50'}`}
+                >
+                  <div className="w-3.5 h-3.5 rounded-full border-2 border-orange-500 flex items-center justify-center"><div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div></div>
+                  Groq Llama 3.3
+                </button>
+              </div>
+            </div>
+
             {localError && (
               <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-4 rounded-xl flex items-center gap-3 text-sm font-bold shadow-sm">
                 <AlertCircle size={20} className="shrink-0" /> {localError}
@@ -129,8 +150,8 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
 
             {isLoading && (
               <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-10 flex flex-col items-center justify-center animate-fade-in p-8 rounded-3xl">
-                <div className="w-full max-w-lg bg-gray-100 rounded-full h-2 mb-8 overflow-hidden relative"><div className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 h-full rounded-full animate-progress-indeterminate absolute top-0 left-0 w-full"></div></div>
-                <h3 className="text-3xl font-black text-gray-900 mb-3 tracking-tight">Procesando Expediente...</h3>
+                <div className="w-full max-w-lg bg-gray-100 rounded-full h-2 mb-8 overflow-hidden relative"><div className={`h-full rounded-full animate-progress-indeterminate absolute top-0 left-0 w-full ${selectedModel === 'groq' ? 'bg-gradient-to-r from-orange-600 via-yellow-500 to-orange-600' : 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600'}`}></div></div>
+                <h3 className="text-3xl font-black text-gray-900 mb-3 tracking-tight">Procesando con {selectedModel === 'groq' ? 'Groq Llama 3' : 'Gemini Pro'}...</h3>
                 <p className="text-gray-500 text-center max-w-md text-lg">El Greko AI está analizando tablas financieras, cronogramas y cláusulas de riesgo.</p>
               </div>
             )}
@@ -139,7 +160,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
 
         <div className="mt-8 flex justify-center gap-12 text-xs text-gray-400 font-bold uppercase tracking-[0.2em]">
           <span className="flex items-center gap-2"><ShieldCheck size={16} /> Encriptación Militar</span>
-          <span className="flex items-center gap-2"><Sparkles size={16} /> Gemini 2.5 Pro</span>
+          <span className={`flex items-center gap-2 transition-colors ${selectedModel === 'groq' ? 'text-orange-600' : ''}`}><Sparkles size={16} /> {selectedModel === 'groq' ? 'Powered by Groq' : 'Gemini 1.5 Pro'}</span>
           <span className="opacity-50 text-[10px]">{BUILD_TIMESTAMP || "v1.0"}</span>
         </div>
       </div>

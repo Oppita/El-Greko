@@ -63,7 +63,7 @@ import {
     CalendarDays,
     MoreHorizontal
 } from 'lucide-react';
-import { ProjectData, ChatMessage, RiskItem, Bottleneck, ProjectMilestone, GrekoAction, PMBOKPrinciple, PMBOKDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, FinancialProtectionDeepAnalysis, ResourceInventory, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, Personnel, Machinery, Equipment, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, EvolutionLog, CapexOpexDeepAnalysis, ConvergenceMetrics, ValueEngineeringAction, MacroeconomicData, INITIAL_PROJECT_DATA } from '../types';
+import { ProjectData, ChatMessage, RiskItem, Bottleneck, ProjectMilestone, GrekoAction, PMBOKPrinciple, PMBOKDeepAnalysis, PMBOKAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, FinancialProtectionDeepAnalysis, ResourceInventory, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, Personnel, Machinery, Equipment, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, EvolutionLog, CapexOpexDeepAnalysis, ConvergenceMetrics, ValueEngineeringAction, MacroeconomicData, INITIAL_PROJECT_DATA } from '../types';
 import { askProjectQuestion, generateMitigationSuggestion, analyzePOTAlignment, analyzeGrekoCronos, analyzePMBOK7, analyzePMBOKPrincipleDeep, analyzeBottleneckDeep, generateAdministrativeDocument, analyzeResourceSufficiency, analyzeFinancialProtectionDeep, analyzeFinancialDeep, analyzeContractorRisk, analyzeCorrectiveDeep, analyzeCriticalPath, analyzeActivityDeep, analyzeKnowledgeDeep, analyzeManagementDeep, searchProjectInfo, updateProjectWithNewData, analyzeCapexOpexDeep, analyzeClimateContext } from '../services/geminiService';
 
 interface DashboardProps {
@@ -181,6 +181,7 @@ const WaterfallBudgetChart: React.FC<{ planned: number; actual: number; eac: num
 };
 
 const SensitivityDashboard: React.FC<{ factors: { scenario: string; impactOnEAC: number; impactOnTir: number; mitigationStrategy: string }[]; formatCurrency: (v: number) => string }> = ({ factors, formatCurrency }) => {
+    if (!factors || !Array.isArray(factors)) return null;
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {factors.map((f, i) => (
@@ -402,11 +403,12 @@ interface ExecutionCenterProps {
     dynamicBottlenecks: Bottleneck[];
     handleBottleneckClick: (b: Bottleneck) => void;
     formatCurrency: (val: number) => string;
+    onUpdate: (data: ProjectData) => void;
 }
 
 const ExecutionCenter: React.FC<ExecutionCenterProps> = ({
     data, milestones, setMilestones, resourceInventory, setResourceInventory,
-    dynamicBottlenecks, handleBottleneckClick, formatCurrency
+    dynamicBottlenecks, handleBottleneckClick, formatCurrency, onUpdate
 }) => {
     const [isCpmLoading, setIsCpmLoading] = useState(false);
     const [cpmSummary, setCpmSummary] = useState<string | null>(null);
@@ -428,6 +430,7 @@ const ExecutionCenter: React.FC<ExecutionCenterProps> = ({
             const res = await analyzeCriticalPath(milestones, { name: data.projectName, objective: data.generalObjective });
             setMilestones(res.updatedMilestones);
             setCpmSummary(res.analysisSummary);
+            onUpdate({ ...data, milestones: res.updatedMilestones }); // Persist critical path
         } catch (e) { console.error(e); } finally { setIsCpmLoading(false); }
     };
 
@@ -438,7 +441,9 @@ const ExecutionCenter: React.FC<ExecutionCenterProps> = ({
         try {
             const res = await analyzeActivityDeep(m, { name: data.projectName, location: data.location.municipality });
             setActivityAnalysis(res);
-            setMilestones(prev => prev.map(p => p.code === m.code ? { ...p, deepAnalysis: res } : p));
+            const updatedMilestones = milestones.map(p => p.code === m.code ? { ...p, deepAnalysis: res } : p);
+            setMilestones(updatedMilestones);
+            onUpdate({ ...data, milestones: updatedMilestones }); // Persist deep analysis
         } catch (e) { console.error(e); } finally { setIsActivityLoading(false); }
     };
 
@@ -447,7 +452,9 @@ const ExecutionCenter: React.FC<ExecutionCenterProps> = ({
         try {
             const res = await analyzeResourceSufficiency(data);
             setResourceAnalysisResult(res);
-            setResourceInventory(prev => ({ ...prev, deepAnalysis: res }));
+            const newInventory = { ...resourceInventory, deepAnalysis: res };
+            setResourceInventory(newInventory);
+            onUpdate({ ...data, resourceInventory: newInventory }); // Persist resource audit
         } catch (e) { console.error(e); } finally { setIsResourceAnalyzing(false); }
     };
 
@@ -746,7 +753,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
 
     const [resourceInventory, setResourceInventory] = useState<ResourceInventory>(data.resourceInventory || { personnel: [], machinery: [], equipment: [] });
     const [isFinancialModalOpen, setIsFinancialModalOpen] = useState(false);
-    const [financialAnalysisResult, setFinancialAnalysisResult] = useState<FinancialDeepAnalysis | null>(null);
+    const [financialAnalysisResult, setFinancialAnalysisResult] = useState<FinancialDeepAnalysis | null>(data.financialDeepAnalysis || null);
     const [isAnalyzingFinance, setIsAnalyzingFinance] = useState(false);
     const [financialAnalysisError, setFinancialAnalysisError] = useState<string | null>(null);
 
@@ -760,7 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
 
     // NEW: CAPEX/OPEX Deep Analysis State
     const [isCapexOpexAnalyzing, setIsCapexOpexAnalyzing] = useState(false);
-    const [capexOpexAnalysis, setCapexOpexAnalysis] = useState<CapexOpexDeepAnalysis | null>(null);
+    const [capexOpexAnalysis, setCapexOpexAnalysis] = useState<CapexOpexDeepAnalysis | null>(data.capexOpexDeepAnalysis || null);
 
     // Montecarlo State
     const [isMontecarloOpen, setIsMontecarloOpen] = useState(false);
@@ -1033,6 +1040,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         }
         setMontecarloData(chartData);
         setMontecarloResults({ distribution: chartData, p10, p50, p90 });
+        // Persist Macro settings
+        onUpdate({ ...data, macroeconomicData: macroData });
     };
 
     // Risk Matrix Helpers
@@ -1106,6 +1115,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                     if (base64) {
                         const result = await analyzePOTAlignment(data, base64);
                         setPotAnalysisResult(result);
+
+                        // Persist POT Analysis
+                        const updatedData = { ...data };
+                        if (!updatedData.ungrdAnalysis) updatedData.ungrdAnalysis = { ...INITIAL_PROJECT_DATA.ungrdAnalysis };
+                        if (!updatedData.ungrdAnalysis.reduction) updatedData.ungrdAnalysis.reduction = { ...INITIAL_PROJECT_DATA.ungrdAnalysis.reduction };
+                        if (!updatedData.ungrdAnalysis.reduction.prospective) updatedData.ungrdAnalysis.reduction.prospective = {};
+
+                        updatedData.ungrdAnalysis.reduction.prospective.potAnalysis = result;
+                        onUpdate(updatedData);
                     }
                 } catch (error: any) {
                     setPotAnalysisError(error.message || "Error desconocido al analizar POT.");
@@ -1116,10 +1134,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             reader.readAsDataURL(file);
         }
     };
-    const handleKnowledgeAnalysis = async () => { setIsAnalyzingKnowledge(true); setKnowledgeDeepAnalysis(null); try { const result = await analyzeKnowledgeDeep(data); setKnowledgeDeepAnalysis(result); } catch (e) { console.error(e); } finally { setIsAnalyzingKnowledge(false); } };
-    const handleCorrectiveAnalysis = async () => { setIsAnalyzingCorrective(true); setCorrectiveDeepAnalysis(null); try { const result = await analyzeCorrectiveDeep(data); setCorrectiveDeepAnalysis(result); } catch (e) { console.error(e); } finally { setIsAnalyzingCorrective(false); } };
-    const handleManagementAnalysis = async () => { setIsAnalyzingManagement(true); setManagementDeepAnalysis(null); try { const result = await analyzeManagementDeep(data); setManagementDeepAnalysis(result); } catch (e) { console.error(e); } finally { setIsAnalyzingManagement(false); } };
-    const handleRunPMBOKAnalysis = async () => { setIsAnalyzingPMBOK(true); try { const currentData = { ...data, milestones: milestones }; const analysis = await analyzePMBOK7(currentData); setPmbokData(analysis); } catch (err) { console.error(err); } finally { setIsAnalyzingPMBOK(false); } };
+    const handleKnowledgeAnalysis = async () => {
+        setIsAnalyzingKnowledge(true);
+        setKnowledgeDeepAnalysis(null);
+        try {
+            const result = await analyzeKnowledgeDeep(data);
+            setKnowledgeDeepAnalysis(result);
+
+            // Safe Deep Update
+            const updatedData = { ...data };
+            if (!updatedData.ungrdAnalysis) updatedData.ungrdAnalysis = { ...INITIAL_PROJECT_DATA.ungrdAnalysis };
+            if (!updatedData.ungrdAnalysis.knowledge) updatedData.ungrdAnalysis.knowledge = { ...INITIAL_PROJECT_DATA.ungrdAnalysis.knowledge };
+
+            updatedData.ungrdAnalysis.knowledge.deepAnalysis = result;
+            onUpdate(updatedData);
+        } catch (e) {
+            console.error("Knowledge Analysis Error:", e);
+        } finally {
+            setIsAnalyzingKnowledge(false);
+        }
+    };
+
+    const handleCorrectiveAnalysis = async () => {
+        setIsAnalyzingCorrective(true);
+        setCorrectiveDeepAnalysis(null);
+        try {
+            const result = await analyzeCorrectiveDeep(data);
+            setCorrectiveDeepAnalysis(result);
+
+            // Safe Deep Update
+            const updatedData = { ...data };
+            if (!updatedData.ungrdAnalysis) updatedData.ungrdAnalysis = { ...INITIAL_PROJECT_DATA.ungrdAnalysis };
+            if (!updatedData.ungrdAnalysis.reduction) updatedData.ungrdAnalysis.reduction = { ...INITIAL_PROJECT_DATA.ungrdAnalysis.reduction };
+            if (!updatedData.ungrdAnalysis.reduction.corrective) updatedData.ungrdAnalysis.reduction.corrective = {};
+
+            updatedData.ungrdAnalysis.reduction.corrective.deepForensicAnalysis = result;
+            onUpdate(updatedData);
+        } catch (e) {
+            console.error("Corrective Analysis Error:", e);
+        } finally {
+            setIsAnalyzingCorrective(false);
+        }
+    };
+
+    const handleManagementAnalysis = async () => {
+        setIsAnalyzingManagement(true);
+        setManagementDeepAnalysis(null);
+        try {
+            const result = await analyzeManagementDeep(data);
+            setManagementDeepAnalysis(result);
+
+            // Safe Deep Update
+            const updatedData = { ...data };
+            if (!updatedData.ungrdAnalysis) updatedData.ungrdAnalysis = { ...INITIAL_PROJECT_DATA.ungrdAnalysis };
+            if (!updatedData.ungrdAnalysis.management) updatedData.ungrdAnalysis.management = { ...INITIAL_PROJECT_DATA.ungrdAnalysis.management };
+
+            updatedData.ungrdAnalysis.management.deepAnalysis = result;
+            onUpdate(updatedData);
+        } catch (e) {
+            console.error("Management Analysis Error:", e);
+        } finally {
+            setIsAnalyzingManagement(false);
+        }
+    };
+    const handleRunPMBOKAnalysis = async () => { setIsAnalyzingPMBOK(true); try { const currentData = { ...data, milestones: milestones }; const analysis = await analyzePMBOK7(currentData); setPmbokData(analysis); onUpdate({ ...data, pmbokAnalysis: analysis }); } catch (err) { console.error(err); } finally { setIsAnalyzingPMBOK(false); } };
 
     const handleAnalyzeFinancialProtection = async () => {
         setIsAnalyzingFinancial(true);
@@ -1127,7 +1205,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         try {
             const result = await analyzeFinancialProtectionDeep(data);
             setFinancialProtectionAnalysis(result);
-        } catch (e) { console.error(e); } finally { setIsAnalyzingFinancial(false); }
+
+            // Safe Deep Update
+            const updatedData = { ...data };
+            if (!updatedData.ungrdAnalysis) updatedData.ungrdAnalysis = { ...INITIAL_PROJECT_DATA.ungrdAnalysis };
+            if (!updatedData.ungrdAnalysis.reduction) updatedData.ungrdAnalysis.reduction = { ...INITIAL_PROJECT_DATA.ungrdAnalysis.reduction };
+            if (!updatedData.ungrdAnalysis.reduction.financialProtection) updatedData.ungrdAnalysis.reduction.financialProtection = {};
+
+            updatedData.ungrdAnalysis.reduction.financialProtection.deepAnalysis = result;
+            onUpdate(updatedData);
+        } catch (e) {
+            console.error("Financial Protection Analysis Error:", e);
+        } finally {
+            setIsAnalyzingFinancial(false);
+        }
     };
 
     const handlePMBOKClick = async (principle: PMBOKPrinciple) => {
@@ -1135,7 +1226,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         setPmbokAnalysisError(null);
         if (principle.deepAnalysis) { setPmbokDeepAnalysisResult(principle.deepAnalysis); return; }
         setPmbokDeepAnalysisResult(null); setIsPMBOKDeepAnalyzing(true);
-        try { const deepAnalysis = await analyzePMBOKPrincipleDeep(data, principle.name); setPmbokDeepAnalysisResult(deepAnalysis); setPmbokData(prev => { if (!prev) return prev; return { ...prev, principles: prev.principles.map(p => p.name === principle.name ? { ...p, deepAnalysis } : p) }; }); } catch (err) { setPmbokAnalysisError("El modelo AI no pudo generar el análisis."); } finally { setIsPMBOKDeepAnalyzing(false); }
+        try {
+            const deepAnalysis = await analyzePMBOKPrincipleDeep(data, principle.name);
+            setPmbokDeepAnalysisResult(deepAnalysis);
+            const updatedPmbok = { ...pmbokData, principles: (pmbokData?.principles || []).map(p => p.name === principle.name ? { ...p, deepAnalysis } : p) } as PMBOKAnalysis;
+            setPmbokData(updatedPmbok);
+            onUpdate({ ...data, pmbokAnalysis: updatedPmbok });
+        } catch (err) { setPmbokAnalysisError("El modelo AI no pudo generar el análisis."); } finally { setIsPMBOKDeepAnalyzing(false); }
     };
 
     const handleBottleneckClick = async (bottleneck: Bottleneck) => {
@@ -1143,12 +1240,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         if (bottleneck.deepAnalysis) { setBottleneckAnalysis(bottleneck.deepAnalysis); return; }
         const key = bottleneck.processName; if (bottleneckCache[key]) { setBottleneckAnalysis(bottleneckCache[key]); return; }
         setBottleneckAnalysis(null); setIsAnalyzingBottleneck(true);
-        try { const deepAnalysis = await analyzeBottleneckDeep(bottleneck, data); setBottleneckAnalysis(deepAnalysis); setBottleneckCache(prev => ({ ...prev, [key]: deepAnalysis })); } catch (err) { console.error(err); } finally { setIsAnalyzingBottleneck(false); }
+        try {
+            const deepAnalysis = await analyzeBottleneckDeep(bottleneck, data);
+            setBottleneckAnalysis(deepAnalysis);
+            setBottleneckCache(prev => ({ ...prev, [key]: deepAnalysis }));
+            // Persist
+            const updatedBottlenecks = data.bottlenecks.map(b => b.processName === bottleneck.processName ? { ...b, deepAnalysis } : b);
+            onUpdate({ ...data, bottlenecks: updatedBottlenecks });
+        } catch (err) { console.error(err); } finally { setIsAnalyzingBottleneck(false); }
     };
 
     const handleGenerateDocument = async (type: 'petition' | 'memo' | 'meeting') => { if (!activeBottleneck) return; setIsGeneratingDoc(true); setGeneratedDocument(null); try { const doc = await generateAdministrativeDocument(activeBottleneck, type, data); setGeneratedDocument(doc); } catch (e) { console.error(e); } finally { setIsGeneratingDoc(false); } };
     const handleAnalyzeRiskMitigation = async (risk: RiskItem) => { setActiveRiskForMitigation(risk); setIsMitigationLoading(true); setMitigationResult(null); try { const suggestion = await generateMitigationSuggestion(risk, data); setMitigationResult(suggestion); } catch (err) { setMitigationResult("Error al generar mitigación."); } finally { setIsMitigationLoading(false); } };
-    const handleAnalyzeContractor = async () => { setIsAnalyzingContractor(true); try { const result = await analyzeContractorRisk(data); setContractorProfile(prev => ({ ...prev, ...result, summary: prev?.summary || result.summary || prev?.summary })); } catch (e) { console.error(e); } finally { setIsAnalyzingContractor(false); } };
+    const handleAnalyzeContractor = async () => { setIsAnalyzingContractor(true); try { const result = await analyzeContractorRisk(data); const newProfile = { ...contractorProfile, ...result, summary: contractorProfile?.summary || result.summary || contractorProfile?.summary } as ContractorProfile; setContractorProfile(newProfile); onUpdate({ ...data, contractorProfile: newProfile }); } catch (e) { console.error(e); } finally { setIsAnalyzingContractor(false); } };
     const handleSendMessage = async (e: React.FormEvent) => { e.preventDefault(); if (!chatInput.trim()) return; const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: chatInput, timestamp: new Date() }; setChatHistory(prev => [...prev, userMsg]); setChatInput(''); setIsChatLoading(true); try { const responseText = await askProjectQuestion(userMsg.text, data); setChatHistory(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'ai', text: responseText, timestamp: new Date() }]); } catch (err) { console.error(err); } finally { setIsChatLoading(false); } };
     const getPMBOKIcon = (englishName: string) => { switch (englishName) { case 'Stewardship': return <Heart size={20} />; case 'Team': return <Users size={20} />; case 'Stakeholders': return <Briefcase size={20} />; case 'Value': return <Gem size={20} />; case 'Systems Thinking': return <BrainCircuit size={20} />; case 'Leadership': return <Medal size={20} />; case 'Tailoring': return <Sliders size={20} />; case 'Quality': return <CheckCircle size={20} />; case 'Complexity': return <Network size={20} />; case 'Risk': return <ShieldAlert size={20} />; case 'Adaptability': return <RefreshCw size={20} />; case 'Change': return <Shuffle size={20} />; default: return <BookOpen size={20} />; } };
     const mapEmbed = useMemo(() => { const lat = data.location?.latitude || 0; const lng = data.location?.longitude || 0; const hasCoordinates = lat !== 0 && lng !== 0; const bbox = hasCoordinates ? `${lng - 0.005},${lat - 0.005},${lng + 0.005},${lat + 0.005}` : `-79.0,0.0,-67.0,12.0`; const marker = hasCoordinates ? `&marker=${lat},${lng}` : ''; return <iframe width="100%" height="100%" frameBorder="0" scrolling="no" src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik${marker}`} style={{ border: 0 }}></iframe>; }, [data.location]);
@@ -1171,6 +1275,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         try {
             const result = await analyzeFinancialDeep(data);
             setFinancialAnalysisResult(result);
+            onUpdate({ ...data, financialDeepAnalysis: result });
         } catch (err: any) {
             console.error(err);
             setFinancialAnalysisError(err.message || "Error desconocido en análisis financiero.");
@@ -1252,6 +1357,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
             try {
                 const result = await analyzeCapexOpexDeep(data);
                 setCapexOpexAnalysis(result);
+                onUpdate({ ...data, capexOpexDeepAnalysis: result });
             } catch (e) {
                 console.error(e);
             } finally {
@@ -1261,11 +1367,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
         setActiveMetricModal('capex_opex_deep');
     };
 
-    // Helper for "Smart Cards" in Financial Tab
-    const FinancialSmartCard = ({ title, value, subtext, type, data, color, metricKey, onClick }: { title: string, value: string, subtext: string, type: 'radial' | 'gauge' | 'bar' | 'icon', data?: any, color: string, metricKey: string, onClick?: () => void }) => {
+    // --- STABLE SUB-COMPONENTS (Moved outside to prevent recreation) ---
+
+    const FinancialSmartCard: React.FC<{
+        title: string;
+        value: string;
+        subtext: string;
+        type: 'radial' | 'gauge' | 'bar' | 'icon';
+        data?: any;
+        color: string;
+        metricKey: string;
+        onClick?: () => void;
+    }> = ({ title, value, subtext, type, data, color, metricKey, onClick }) => {
+        // Safeguard data for charts
+        const chartData = useMemo(() => {
+            if (type === 'gauge') {
+                const val = typeof data === 'number' && !isNaN(data) ? data : 0;
+                return [{ value: val }, { value: Math.max(0, 2 - val) }];
+            }
+            if (type === 'radial') {
+                return [{ name: 'progress', value: typeof data === 'number' && !isNaN(data) ? data : 0, fill: color }];
+            }
+            if (type === 'bar') {
+                return Array.isArray(data) ? data : [];
+            }
+            return data;
+        }, [data, type, color]);
+
         return (
             <div
-                onClick={onClick || (() => setActiveMetricModal(metricKey))}
+                onClick={onClick}
                 className="bg-white p-6 rounded-2xl border border-gray-100 shadow-md hover:shadow-xl transition-all duration-300 group relative overflow-hidden cursor-pointer hover:scale-[1.02]"
             >
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -1286,26 +1417,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                 <div className="h-16 w-full relative z-10">
                     <ResponsiveContainer width="100%" height="100%">
                         {type === 'radial' ? (
-                            <RadialBarChart innerRadius="70%" outerRadius="100%" barSize={10} data={[{ name: 'progress', value: data, fill: color }]}>
+                            <RadialBarChart innerRadius="70%" outerRadius="100%" barSize={10} data={chartData}>
                                 <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
                                 <RadialBar background clockWise dataKey="value" cornerRadius={10} />
                             </RadialBarChart>
                         ) : type === 'gauge' ? (
                             <PieChart>
-                                <Pie data={[{ value: data }, { value: Math.max(0, 2 - data) }]} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={35} outerRadius={50} paddingAngle={0} dataKey="value">
-                                    <Cell fill={data >= 1 ? '#10b981' : '#ef4444'} />
+                                <Pie data={chartData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={35} outerRadius={50} paddingAngle={0} dataKey="value">
+                                    <Cell fill={(typeof data === 'number' && data >= 1) ? '#10b981' : '#ef4444'} />
                                     <Cell fill="#f1f5f9" />
                                 </Pie>
                             </PieChart>
                         ) : type === 'bar' ? (
-                            <BarChart data={data}>
+                            <BarChart data={chartData}>
                                 <Bar dataKey="value" fill={color} radius={[2, 2, 2, 2]} />
                                 <ReferenceLine y={0} stroke="#cbd5e1" />
                             </BarChart>
                         ) : (
                             <div className="h-full flex items-end pb-2">
                                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, data)}%`, backgroundColor: color }}></div>
+                                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, typeof data === 'number' ? data : 0)}%`, backgroundColor: color }}></div>
                                 </div>
                             </div>
                         )}
@@ -1630,6 +1761,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                         )}
                     </BaseModal>
 
+                    <BaseModal isOpen={isFinancialModalOpen} onClose={() => setIsFinancialModalOpen(false)} title="Audit de Inteligencia Financiera (Forense)" maxWidth="max-w-6xl">
+                        {isAnalyzingFinance ? (
+                            <div className="text-center py-20 flex flex-col items-center animate-fade-in">
+                                <div className="p-4 bg-indigo-100 rounded-full text-indigo-600 mb-4 animate-bounce">
+                                    <Calculator size={32} />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800">CFO IA Auditando Cuentas...</h3>
+                                <p className="text-slate-500 text-sm mt-1">Cruzando presupuesto vs ejecución real y analizando riesgos de mercado.</p>
+                                <Loader2 size={48} className="text-indigo-600 animate-spin mt-6" />
+                            </div>
+                        ) : financialAnalysisResult ? (
+                            <div className="space-y-8 animate-fade-in">
+                                <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-10 opacity-10"><Sigma size={100} /></div>
+                                    <div className="flex justify-between items-start relative z-10">
+                                        <div>
+                                            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">Diagnóstico Maestro</h4>
+                                            <p className="text-xl font-medium leading-relaxed max-w-3xl italic">"{financialAnalysisResult.diagnosis}"</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs font-bold text-slate-400 uppercase mb-1">Health Score</div>
+                                            <div className="text-5xl font-black text-indigo-400">{financialAnalysisResult.healthScore}<span className="text-xl opacity-50">/100</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                        <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><ArrowUpRight size={20} className="text-blue-500" /> Proyección de Cierre (Forecasting)</h4>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between p-4 bg-slate-50 rounded-xl">
+                                                <span className="text-sm text-slate-500">Estimado al Finalizar (EAC)</span>
+                                                <span className="font-bold text-slate-900">{formatCurrency(financialAnalysisResult.forecast?.eac || 0)}</span>
+                                            </div>
+                                            <div className="flex justify-between p-4 bg-slate-50 rounded-xl">
+                                                <span className="text-sm text-slate-500">Variación (VAC)</span>
+                                                <span className={`font-bold ${(financialAnalysisResult.forecast?.vac || 0) < 0 ? 'text-red-500' : 'text-green-500'}`}>{formatCurrency(financialAnalysisResult.forecast?.vac || 0)}</span>
+                                            </div>
+                                            <div className={`p-4 rounded-xl text-center font-black uppercase tracking-widest text-sm ${financialAnalysisResult.forecast?.projectedStatus === 'Superávit' ? 'bg-green-100 text-green-700' :
+                                                financialAnalysisResult.forecast?.projectedStatus === 'Déficit' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                                }`}>
+                                                ESTADO: {financialAnalysisResult.forecast?.projectedStatus || 'N/A'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                                        <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><Diff size={20} className="text-orange-500" /> Análisis de Concatenación</h4>
+                                        <p className="text-xs text-slate-500 mb-4 leading-relaxed">{financialAnalysisResult.concatenationAnalysis?.budgetVsExecutionGap || 'No se detectaron discrepancias.'}</p>
+                                        <div className="space-y-2">
+                                            {(financialAnalysisResult.concatenationAnalysis?.flaggedDiscrepancies || []).map((d: any, i: number) => (
+                                                <div key={i} className="flex justify-between items-center text-xs p-2 border-b border-gray-50 last:border-0">
+                                                    <span className="font-medium text-slate-700 truncate max-w-[150px]">{d.activityName}</span>
+                                                    <span className="text-red-600 font-bold">{d.variance}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : financialAnalysisError ? (
+                            <div className="text-center py-20">
+                                <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+                                <h4 className="text-lg font-bold text-slate-800">Error en el Análisis</h4>
+                                <p className="text-slate-500">{financialAnalysisError}</p>
+                            </div>
+                        ) : null}
+                    </BaseModal>
+
                     {/* ... (Search Modal and Metric Modal remain the same) ... */}
                     <BaseModal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} title="Radar de Noticias (Google Search)">
                         {isSearching ? (
@@ -1760,10 +1960,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                                 </div>
                                                 {/* CONTENT */}
                                                 <div className="flex-1">
-                                                    {knowledgeDashboardTab === 'threat' && <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fade-in"><h4 className="font-bold text-lg text-slate-800 mb-2">Caracterización de la Amenaza</h4><p className="text-sm text-slate-600 leading-relaxed">{knowledgeDeepAnalysis.riskCharacterization}</p></div>}
-                                                    {knowledgeDashboardTab === 'gaps' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis.criticalDataGaps || []).map((gap, i) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-red-100"><span className={`inline-block px-2 py-0.5 text-xs font-bold rounded mb-2 ${gap.criticality === 'Alta' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{gap.criticality}</span><h5 className="font-bold text-slate-800">{gap.gap}</h5><p className="text-xs text-slate-500 mt-1 mb-3">{gap.impact}</p><div className="bg-slate-50 p-3 rounded-lg border border-slate-200"><h6 className="font-bold text-slate-400 text-[10px] uppercase mb-1">Plan de Acción</h6><p className="text-xs text-slate-600 font-medium">{gap.actionPlan}</p></div></div>))}</div>}
-                                                    {knowledgeDashboardTab === 'modeling' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis.modelingAlternatives || []).map((alt, i) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200"><h5 className="font-bold text-slate-800">{alt.name}</h5><div className="text-xs flex gap-2 my-2"><span className="bg-blue-100 text-blue-700 px-2 rounded font-medium">{alt.type}</span><span className="bg-gray-100 px-2 rounded font-medium">{alt.complexity}</span><span className="bg-green-100 text-green-700 px-2 rounded font-medium">{alt.estimatedCost}</span></div><div className="grid grid-cols-2 gap-3 text-xs mt-3"><div className="bg-green-50 p-2 rounded"><strong>PROS:</strong> {alt.pros.join(', ')}</div><div className="bg-red-50 p-2 rounded"><strong>CONTRAS:</strong> {alt.cons.join(', ')}</div></div></div>))}</div>}
-                                                    {knowledgeDashboardTab === 'monitoring' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis.monitoringAlternatives || []).map((alt, i) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200"><h5 className="font-bold text-slate-800">{alt.name}</h5><div className="text-xs flex gap-2 my-2"><span className="bg-blue-100 text-blue-700 px-2 rounded font-medium">{alt.type}</span><span className="bg-gray-100 px-2 rounded font-medium">{alt.complexity}</span><span className="bg-green-100 text-green-700 px-2 rounded font-medium">{alt.estimatedCost}</span></div><div className="grid grid-cols-2 gap-3 text-xs mt-3"><div className="bg-green-50 p-2 rounded"><strong>PROS:</strong> {alt.pros.join(', ')}</div><div className="bg-red-50 p-2 rounded"><strong>CONTRAS:</strong> {alt.cons.join(', ')}</div></div></div>))}</div>}
+                                                    {knowledgeDashboardTab === 'threat' && <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 animate-fade-in"><h4 className="font-bold text-lg text-slate-800 mb-2">Caracterización de la Amenaza</h4><p className="text-sm text-slate-600 leading-relaxed">{knowledgeDeepAnalysis?.riskCharacterization}</p></div>}
+                                                    {knowledgeDashboardTab === 'gaps' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis?.criticalDataGaps || []).map((gap: any, i: number) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-red-100"><span className={`inline-block px-2 py-0.5 text-xs font-bold rounded mb-2 ${gap?.criticality === 'Alta' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{gap?.criticality}</span><h5 className="font-bold text-slate-800">{gap?.gap}</h5><p className="text-xs text-slate-500 mt-1 mb-3">{gap?.impact}</p><div className="bg-slate-50 p-3 rounded-lg border border-slate-200"><h6 className="font-bold text-slate-400 text-[10px] uppercase mb-1">Plan de Acción</h6><p className="text-xs text-slate-600 font-medium">{gap?.actionPlan}</p></div></div>))}</div>}
+                                                    {knowledgeDashboardTab === 'modeling' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis?.modelingAlternatives || []).map((alt: any, i: number) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200"><h5 className="font-bold text-slate-800">{alt?.name}</h5><div className="text-xs flex gap-2 my-2"><span className="bg-blue-100 text-blue-700 px-2 rounded font-medium">{alt?.type}</span><span className="bg-gray-100 px-2 rounded font-medium">{alt?.complexity}</span><span className="bg-green-100 text-green-700 px-2 rounded font-medium">{alt?.estimatedCost}</span></div><div className="grid grid-cols-2 gap-3 text-xs mt-3"><div className="bg-green-50 p-2 rounded"><strong>PROS:</strong> {alt?.pros?.join(', ')}</div><div className="bg-red-50 p-2 rounded"><strong>CONTRAS:</strong> {alt?.cons?.join(', ')}</div></div></div>))}</div>}
+                                                    {knowledgeDashboardTab === 'monitoring' && <div className="space-y-4 animate-fade-in">{(knowledgeDeepAnalysis?.monitoringAlternatives || []).map((alt: any, i: number) => (<div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-slate-200"><h5 className="font-bold text-slate-800">{alt?.name}</h5><div className="text-xs flex gap-2 my-2"><span className="bg-blue-100 text-blue-700 px-2 rounded font-medium">{alt?.type}</span><span className="bg-gray-100 px-2 rounded font-medium">{alt?.complexity}</span><span className="bg-green-100 text-green-700 px-2 rounded font-medium">{alt?.estimatedCost}</span></div><div className="grid grid-cols-2 gap-3 text-xs mt-3"><div className="bg-green-50 p-2 rounded"><strong>PROS:</strong> {alt?.pros?.join(', ')}</div><div className="bg-red-50 p-2 rounded"><strong>CONTRAS:</strong> {alt?.cons?.join(', ')}</div></div></div>))}</div>}
                                                 </div>
                                             </div>
                                         )}
@@ -1790,16 +1990,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-md">
                                                     <h4 className="font-bold text-slate-800 text-lg mb-4 flex items-center gap-2"><ZoomIn size={20} /> Auditoría de la Solución Propuesta</h4>
                                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm"><h6 className="font-bold text-slate-400 text-xs uppercase mb-2">Diagnóstico Amenaza</h6><p className="text-sm font-medium text-slate-800">{correctiveDeepAnalysis.threatDiagnosis}</p></div>
+                                                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm"><h6 className="font-bold text-slate-400 text-xs uppercase mb-2">Diagnóstico Amenaza</h6><p className="text-sm font-medium text-slate-800">{correctiveDeepAnalysis?.threatDiagnosis || 'No disponible'}</p></div>
                                                         <div className="lg:col-span-2 bg-red-50 p-5 rounded-xl border border-red-100 shadow-sm relative">
                                                             <h6 className="font-bold text-red-400 text-xs uppercase mb-2">Crítica Técnica (Value Engineering)</h6>
-                                                            <p className="text-sm font-medium text-slate-800 leading-relaxed italic">"{typeof correctiveDeepAnalysis.engineeringSolutionAudit === 'string' ? correctiveDeepAnalysis.engineeringSolutionAudit : JSON.stringify(correctiveDeepAnalysis.engineeringSolutionAudit || 'Análisis no disponible')}"</p>
+                                                            <p className="text-sm font-medium text-slate-800 leading-relaxed italic">"{typeof correctiveDeepAnalysis?.engineeringSolutionAudit === 'string' ? correctiveDeepAnalysis?.engineeringSolutionAudit : JSON.stringify(correctiveDeepAnalysis?.engineeringSolutionAudit || 'Análisis no disponible')}"</p>
                                                             <div className="absolute top-4 right-4 bg-white px-2 py-1 rounded text-xs font-bold shadow-sm border border-red-100">AI Critique</div>
                                                         </div>
                                                     </div>
                                                     <div className="mt-4 bg-slate-900 text-white p-4 rounded-xl flex items-center justify-between">
                                                         <div className="text-xs font-medium uppercase tracking-wider text-slate-400">Score de Rigor Técnico</div>
-                                                        <div className="text-3xl font-black">{correctiveDeepAnalysis.technicalRigorScore || 0}<span className="text-lg text-gray-500">/100</span></div>
+                                                        <div className="text-3xl font-black">{correctiveDeepAnalysis?.technicalRigorScore || 0}<span className="text-lg text-gray-500">/100</span></div>
                                                     </div>
                                                 </div>
 
@@ -1920,18 +2120,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                             <div className="bg-emerald-50/50 p-6 rounded-xl border border-emerald-100 animate-fade-in">
                                                 <div className="flex justify-between items-start mb-4">
                                                     <h4 className="font-bold text-emerald-900 flex items-center gap-2"><CheckCircle size={20} /> Resultado Auditoría POT</h4>
-                                                    <div className="bg-white px-3 py-1 rounded-full text-sm font-black text-emerald-700 shadow-sm border border-emerald-200">Score: {potAnalysisResult.complianceScore}/100</div>
+                                                    <div className="bg-white px-3 py-1 rounded-full text-sm font-black text-emerald-700 shadow-sm border border-emerald-200">Score: {potAnalysisResult?.complianceScore || 0}/100</div>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="bg-white p-4 rounded-xl border border-emerald-100/50">
                                                         <h5 className="font-bold text-xs uppercase text-slate-400 mb-2">Restricciones de Uso del Suelo</h5>
-                                                        {potAnalysisResult.landUseRestrictions.length > 0 ? (
-                                                            <ul className="space-y-2">{potAnalysisResult.landUseRestrictions.map((r, i) => <li key={i} className="text-xs text-red-600 flex gap-2 items-start"><AlertCircle size={12} className="shrink-0 mt-0.5" /> <span><strong>{r.issue}:</strong> {r.mitigation}</span></li>)}</ul>
+                                                        {(potAnalysisResult?.landUseRestrictions || []).length > 0 ? (
+                                                            <ul className="space-y-2">{(potAnalysisResult?.landUseRestrictions || []).map((r: any, i: number) => <li key={i} className="text-xs text-red-600 flex gap-2 items-start"><AlertCircle size={12} className="shrink-0 mt-0.5" /> <span><strong>{r?.issue}:</strong> {r?.mitigation}</span></li>)}</ul>
                                                         ) : <div className="text-xs text-green-600">No se detectaron restricciones mayores.</div>}
                                                     </div>
                                                     <div className="bg-white p-4 rounded-xl border border-emerald-100/50">
                                                         <h5 className="font-bold text-xs uppercase text-slate-400 mb-2">Recomendaciones Urbanísticas</h5>
-                                                        <ul className="space-y-1 list-disc pl-4">{potAnalysisResult.recommendations.map((r, i) => <li key={i} className="text-xs text-slate-600">{r}</li>)}</ul>
+                                                        <ul className="space-y-1 list-disc pl-4">{(potAnalysisResult?.recommendations || []).map((r: any, i: number) => <li key={i} className="text-xs text-slate-600">{r}</li>)}</ul>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1957,21 +2157,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                             <div className="space-y-6 animate-fade-in">
                                                 <div className="flex items-center justify-between bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                                                     <div><h4 className="font-bold text-slate-800 text-lg">Índice de Eficiencia de Cobertura</h4><p className="text-xs text-slate-500">Evaluación de pólizas vs Riesgos del proyecto</p></div>
-                                                    <div className="text-4xl font-black text-indigo-600">{financialProtectionAnalysis.efficiencyScore}<span className="text-2xl text-slate-300">/100</span></div>
+                                                    <div className="text-4xl font-black text-indigo-600">{financialProtectionAnalysis?.efficiencyScore || 0}<span className="text-2xl text-slate-300">/100</span></div>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="bg-red-50 p-6 rounded-xl border border-red-100">
                                                         <h5 className="font-bold text-red-800 mb-3 flex items-center gap-2"><AlertCircle size={18} /> Brechas de Cobertura</h5>
-                                                        <ul className="space-y-2">{(financialProtectionAnalysis.coverageGaps || []).map((gap, i) => (<li key={i} className="text-sm text-red-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></div>{gap}</li>))}</ul>
+                                                        <ul className="space-y-2">{(financialProtectionAnalysis?.coverageGaps || []).map((gap: any, i: number) => (<li key={i} className="text-sm text-red-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></div>{gap}</li>))}</ul>
                                                     </div>
                                                     <div className="bg-green-50 p-6 rounded-xl border border-green-100">
                                                         <h5 className="font-bold text-green-800 mb-3 flex items-center gap-2"><CheckCircle size={18} /> Instrumentos Recomendados</h5>
-                                                        <ul className="space-y-2">{(financialProtectionAnalysis.recommendedInstruments || []).map((inst, i) => (<li key={i} className="text-sm text-green-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0"></div>{inst}</li>))}</ul>
+                                                        <ul className="space-y-2">{(financialProtectionAnalysis?.recommendedInstruments || []).map((inst: any, i: number) => (<li key={i} className="text-sm text-green-700 flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0"></div>{inst}</li>))}</ul>
                                                     </div>
                                                 </div>
                                                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
                                                     <h5 className="font-bold text-slate-700 uppercase text-xs tracking-wider mb-2">Evaluación Estratégica</h5>
-                                                    <p className="text-sm text-slate-600 leading-relaxed italic">"{financialProtectionAnalysis.strategicAssessment}"</p>
+                                                    <p className="text-sm text-slate-600 leading-relaxed italic">"{financialProtectionAnalysis?.strategicAssessment || 'No disponible.'}"</p>
                                                 </div>
                                             </div>
                                         )}
@@ -1996,22 +2196,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                                             <div className="space-y-6 animate-fade-in">
                                                 <div className="flex items-center justify-between bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                                                     <div><h4 className="font-bold text-slate-800 text-lg">Nivel de Preparación (Response Readiness)</h4><p className="text-xs text-slate-500">Capacidad instalada vs Escenarios de Riesgo</p></div>
-                                                    <div className="text-4xl font-black text-orange-600">{managementDeepAnalysis.preparednessScore}<span className="text-2xl text-slate-300">/100</span></div>
+                                                    <div className="text-4xl font-black text-orange-600">{managementDeepAnalysis?.preparednessScore || 0}<span className="text-2xl text-slate-300">/100</span></div>
                                                 </div>
 
                                                 <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                                                     <h5 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileCheck size={18} className="text-blue-500" /> Auditoría Plan de Contingencia</h5>
-                                                    <p className="text-sm text-slate-600 leading-relaxed mb-4">{managementDeepAnalysis.contingencyPlanAudit}</p>
+                                                    <p className="text-sm text-slate-600 leading-relaxed mb-4">{managementDeepAnalysis?.contingencyPlanAudit || 'No disponible.'}</p>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        <div className="bg-slate-50 p-3 rounded-lg"><strong className="block text-xs uppercase text-slate-400 mb-1">Logística (Puntos Fuertes)</strong><ul className="list-disc pl-4 space-y-1">{managementDeepAnalysis.responseLogistics.strengths.map((s, i) => <li key={i} className="text-xs text-slate-600">{s}</li>)}</ul></div>
-                                                        <div className="bg-slate-50 p-3 rounded-lg"><strong className="block text-xs uppercase text-slate-400 mb-1">Logística (Debilidades)</strong><ul className="list-disc pl-4 space-y-1">{managementDeepAnalysis.responseLogistics.weaknesses.map((w, i) => <li key={i} className="text-xs text-red-600">{w}</li>)}</ul></div>
+                                                        <div className="bg-slate-50 p-3 rounded-lg"><strong className="block text-xs uppercase text-slate-400 mb-1">Logística (Puntos Fuertes)</strong><ul className="list-disc pl-4 space-y-1">{(managementDeepAnalysis?.responseLogistics?.strengths || []).map((s: any, i: number) => <li key={i} className="text-xs text-slate-600">{s}</li>)}</ul></div>
+                                                        <div className="bg-slate-50 p-3 rounded-lg"><strong className="block text-xs uppercase text-slate-400 mb-1">Logística (Debilidades)</strong><ul className="list-disc pl-4 space-y-1">{(managementDeepAnalysis?.responseLogistics?.weaknesses || []).map((w: any, i: number) => <li key={i} className="text-xs text-red-600">{w}</li>)}</ul></div>
                                                     </div>
                                                 </div>
 
                                                 <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-100">
                                                     <h5 className="font-bold text-yellow-800 mb-4 flex items-center gap-2"><Bot size={18} /> Recomendaciones de Acción Inmediata</h5>
                                                     <div className="space-y-3">
-                                                        {(managementDeepAnalysis.actionableRecommendations || []).map((rec, i) => (
+                                                        {(managementDeepAnalysis?.actionableRecommendations || []).map((rec: any, i: number) => (
                                                             <div key={i} className="flex gap-3 bg-white/60 p-3 rounded-lg border border-yellow-200/50">
                                                                 <div className="bg-yellow-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0">{i + 1}</div>
                                                                 <p className="text-sm text-yellow-900 font-medium">{rec}</p>
@@ -2343,6 +2543,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
                             dynamicBottlenecks={dynamicBottlenecks}
                             handleBottleneckClick={handleBottleneckClick}
                             formatCurrency={formatCurrency}
+                            onUpdate={onUpdate}
                         />
                     )}
 
@@ -2392,10 +2593,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onUpdate })
 
                             {/* FORENSIC KPI GRID */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                <FinancialSmartCard title="Salud Financiera" value={financialAnalysisResult ? `${financialAnalysisResult.healthScore}/100` : "Pendiente"} subtext="Algoritmo Ponderado AI" type="radial" data={financialAnalysisResult ? financialAnalysisResult.healthScore : 0} color="#3b82f6" metricKey="healthScore" />
-                                <FinancialSmartCard title="Estimado al Cierre (EAC)" value={formatCurrency(calculatedMetrics.eac)} subtext={`Desviación: ${formatCurrency(calculatedMetrics.eac - data.totalBudget)}`} type="bar" data={[{ name: 'EAC', value: calculatedMetrics.eac }]} color="#f59e0b" metricKey="eac" />
-                                <FinancialSmartCard title="Índice de Eficiencia (CPI)" value={calculatedMetrics.cpi.toFixed(2)} subtext={calculatedMetrics.cpi >= 1 ? "Eficiencia Óptima" : "Sobrecosto Detectado"} type="gauge" data={calculatedMetrics.cpi} color="#10b981" metricKey="cpi" />
-                                <FinancialSmartCard title="Relación Beneficio-Costo" value={calculatedMetrics.bcRatio.toFixed(2)} subtext={calculatedMetrics.bcRatio > 1 ? "Socialmente Viable" : "Baja Viabilidad"} type="icon" data={100} color="#6366f1" metricKey="bcRatio" />
+                                <FinancialSmartCard title="Salud Financiera" value={financialAnalysisResult ? `${financialAnalysisResult.healthScore}/100` : "Pendiente"} subtext="Algoritmo Ponderado AI" type="radial" data={financialAnalysisResult ? financialAnalysisResult.healthScore : 0} color="#3b82f6" metricKey="healthScore" onClick={() => setActiveMetricModal('healthScore')} />
+                                <FinancialSmartCard title="Estimado al Cierre (EAC)" value={formatCurrency(calculatedMetrics.eac)} subtext={`Desviación: ${formatCurrency(calculatedMetrics.eac - data.totalBudget)}`} type="bar" data={[{ name: 'EAC', value: calculatedMetrics.eac }]} color="#f59e0b" metricKey="eac" onClick={() => setActiveMetricModal('eac')} />
+                                <FinancialSmartCard title="Índice de Eficiencia (CPI)" value={calculatedMetrics.cpi.toFixed(2)} subtext={calculatedMetrics.cpi >= 1 ? "Eficiencia Óptima" : "Sobrecosto Detectado"} type="gauge" data={calculatedMetrics.cpi} color="#10b981" metricKey="cpi" onClick={() => setActiveMetricModal('cpi')} />
+                                <FinancialSmartCard title="Relación Beneficio-Costo" value={calculatedMetrics.bcRatio.toFixed(2)} subtext={calculatedMetrics.bcRatio > 1 ? "Socialmente Viable" : "Baja Viabilidad"} type="icon" data={100} color="#6366f1" metricKey="bcRatio" onClick={() => setActiveMetricModal('bcRatio')} />
                             </div>
 
                             {/* WATERFALL & BREAKDOWN SECTION */}

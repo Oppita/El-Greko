@@ -1,5 +1,6 @@
 
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { generateWithGroq, isQuotaError, isGroqConfigured } from "./groqService";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
 const getApiKey = () => {
@@ -22,7 +23,7 @@ if (!API_KEY) {
 
 // VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
 // This helps verify if the deployed code is actually fresh.
-export const BUILD_TIMESTAMP = "Build: Jan 18 - 12:40 PM (Upgrade to Gemini 2.5)";
+export const BUILD_TIMESTAMP = "Build: Jan 25 - 14:35 PM (Stable Gemini 1.5)";
 
 let genAI: GoogleGenerativeAI;
 try {
@@ -118,36 +119,57 @@ interface Output {
 export interface AnalysisInput {
     type: 'text' | 'pdf' | 'image';
     content: string; // Base64 string for PDF/Image or raw text
+    provider?: 'gemini' | 'groq'; // User selected provider
 }
 
 // --- UTILITIES ---
 
 export const cleanJsonString = (str: string): string => {
     if (!str) return "{}";
-    // Remove markdown code blocks
+    // Remove markdown code blocks (json or plain)
     let cleaned = str.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-    // Attempt to remove leading/trailing text if any (simple heuristic)
+
+    // Find the first '{' or '['
     const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
     const firstBracket = cleaned.indexOf('[');
+
+    let start = -1;
+    if (firstBrace !== -1 && firstBracket !== -1) {
+        start = Math.min(firstBrace, firstBracket);
+    } else if (firstBrace !== -1) {
+        start = firstBrace;
+    } else {
+        start = firstBracket;
+    }
+
+    if (start === -1) return "{}"; // No JSON found
+
+    // Find the last '}' or ']'
+    const lastBrace = cleaned.lastIndexOf('}');
     const lastBracket = cleaned.lastIndexOf(']');
 
-    // Handle both objects {} and arrays []
-    let start = -1;
-    let end = -1;
+    let end = Math.max(lastBrace, lastBracket);
 
-    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-        start = firstBrace;
-        end = lastBrace;
-    } else if (firstBracket !== -1) {
-        start = firstBracket;
-        end = lastBracket;
-    }
-
-    if (start !== -1 && end !== -1 && end > start) {
+    if (end > start) {
         cleaned = cleaned.substring(start, end + 1);
+    } else {
+        return "{}"; // Malformed
     }
+
     return cleaned;
+};
+
+const safeJsonParse = <T>(jsonString: string, context: string): T => {
+    try {
+        const cleaned = cleanJsonString(jsonString);
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.error(`FAILED TO PARSE JSON [${context}]:`, jsonString);
+        console.error(e);
+        // Return null or empty object? Or throw?
+        // Throwing allows the UI to show an error message.
+        throw new Error(`Error al procesar la respuesta de IA (${context}). La respuesta no fue un JSON válido.`);
+    }
 };
 
 // Helper to clean numeric strings
@@ -238,7 +260,7 @@ const cleanCoordinate = (val: any): number => {
     return isNaN(extracted) ? 0 : extracted;
 }
 
-const sanitizeProjectData = (data: any): ProjectData => {
+export const sanitizeProjectData = (data: any): ProjectData => {
     let sanitizedBudget = cleanNumber(data.totalBudget);
 
     const sortedMilestones = Array.isArray(data.milestones) ? data.milestones.map((m: any) => ({
@@ -619,28 +641,56 @@ const sanitizeProjectData = (data: any): ProjectData => {
 };
 
 // --- ROBUST GENERATION HELPER ---
-const generateWithFallback = async (requestParams: any, timeoutMs: number = 180000) => {
-    // Attempt 1: Gemini 1.5 Pro (High Reasoning)
-    // Pass systemInstruction during model initialization for V1 if preferred, or in request if supported.
-    // Ideally, for V1, systemInstruction is best passed at getGenerativeModel.
-    // However, to avoid refactoring everything, we'll try to extract it from requestParams if present.
+const normalizeContents = (contents: any): any[] => {
+    // If it's already an array of Content objects, use it directly
+    if (Array.isArray(contents)) {
+        return contents;
+    }
+    // If it's a string (simple prompt), wrap it
+    if (typeof contents === 'string') {
+        return [{ role: 'user', parts: [{ text: contents }] }];
+    }
+    // If it's an object with 'parts' array (e.g., { parts: [...] })
+    if (contents && typeof contents === 'object' && contents.parts) {
+        return [{ role: 'user', parts: contents.parts }];
+    }
+    // Fallback: empty
+    console.warn("normalizeContents: Could not interpret contents, returning empty.", contents);
+    return [{ role: 'user', parts: [{ text: "No content provided." }] }];
+};
 
+const generateWithFallback = async (requestParams: any, timeoutMs: number = 180000) => {
     const sysInstruction = requestParams.generationConfig?.systemInstruction || requestParams.config?.systemInstruction;
 
     const modelPro = genAI.getGenerativeModel({
-        model: "gemini-2.5-pro",
+        model: "gemini-1.5-pro",
         systemInstruction: sysInstruction
     });
 
-    // Clean up request params for generateContent (remove config/systemInstruction wrapper)
     const actualGenerationConfig = {
         ...(requestParams.generationConfig || requestParams.config || {}),
     };
-    delete actualGenerationConfig.systemInstruction; // Cleanup
+    delete actualGenerationConfig.systemInstruction;
 
     const generateContentRequest = {
-        contents: Array.isArray(requestParams.contents) ? requestParams.contents : [{ role: 'user', parts: requestParams.contents.parts || [] }],
+        contents: normalizeContents(requestParams.contents),
         generationConfig: actualGenerationConfig
+    };
+
+    // Extract user prompt text for Groq fallback
+    const extractUserPrompt = (): string => {
+        const contents = generateContentRequest.contents;
+        let allText = "";
+        if (Array.isArray(contents)) {
+            for (const content of contents) {
+                if (content.parts) {
+                    for (const part of content.parts) {
+                        if (part.text) allText += part.text + "\n";
+                    }
+                }
+            }
+        }
+        return allText.trim() || "Analyze the provided content.";
     };
 
     try {
@@ -649,44 +699,100 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
     } catch (error: any) {
         console.warn("Gemini 1.5 Pro failed. Retrying with Gemini 1.5 Flash...", error);
 
-        // Attempt 2: Gemini 1.5 Flash (High Stability/Speed)
         try {
             const modelFlash = genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: "gemini-1.5-flash",
                 systemInstruction: sysInstruction
             });
             const result = await modelFlash.generateContent(generateContentRequest);
             return result.response;
-        } catch (err2) {
+        } catch (err2: any) {
+            // Check if it's a quota error and Groq is available
+            if (isQuotaError(err2) && isGroqConfigured()) {
+                console.warn("⚠️ Gemini quota exceeded. Falling back to Groq Llama 3.3...");
+
+                try {
+                    const groqResponse = await generateWithGroq(
+                        sysInstruction || SYSTEM_INSTRUCTION,
+                        extractUserPrompt(),
+                        {
+                            temperature: actualGenerationConfig.temperature ?? 0,
+                            jsonMode: actualGenerationConfig.responseMimeType === "application/json"
+                        }
+                    );
+                    console.log("✅ Groq fallback successful!");
+                    return groqResponse;
+                } catch (groqError) {
+                    console.error("Groq fallback also failed:", groqError);
+                    throw groqError;
+                }
+            }
             throw err2;
         }
     }
 };
 
-// --- FAST GENERATION HELPER (NO FALLBACK, FLASH ONLY) ---
+// --- FAST GENERATION HELPER (WITH GROQ FALLBACK) ---
 const generateFast = async (configParams: any, timeoutMs: number = 30000) => {
-    try {
-        const sysInstruction = configParams.generationConfig?.systemInstruction || configParams.config?.systemInstruction;
+    const sysInstruction = configParams.generationConfig?.systemInstruction || configParams.config?.systemInstruction;
 
+    const actualGenerationConfig = {
+        ...(configParams.generationConfig || configParams.config || {}),
+    };
+    delete actualGenerationConfig.systemInstruction;
+
+    const generateContentRequest = {
+        contents: normalizeContents(configParams.contents),
+        generationConfig: actualGenerationConfig
+    };
+
+    // Extract user prompt for Groq fallback
+    const extractUserPrompt = (): string => {
+        const contents = generateContentRequest.contents;
+        if (Array.isArray(contents)) {
+            for (const content of contents) {
+                if (content.parts) {
+                    for (const part of content.parts) {
+                        if (part.text) return part.text;
+                    }
+                }
+            }
+        }
+        return "Analyze the provided content.";
+    };
+
+    try {
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash",
+            model: "gemini-1.5-flash",
             systemInstruction: sysInstruction
         });
-
-        const actualGenerationConfig = {
-            ...(configParams.generationConfig || configParams.config || {}),
-        };
-        delete actualGenerationConfig.systemInstruction;
-
-        const generateContentRequest = {
-            contents: Array.isArray(configParams.contents) ? configParams.contents : [{ role: 'user', parts: configParams.contents.parts || [] }],
-            generationConfig: actualGenerationConfig
-        };
 
         const result = await model.generateContent(generateContentRequest);
         return result.response;
     } catch (error: any) {
         console.error("Fast generation failed:", error);
+
+        // Fallback to Groq if quota exceeded
+        if (isQuotaError(error) && isGroqConfigured()) {
+            console.warn("⚠️ Gemini Flash quota exceeded. Falling back to Groq...");
+
+            try {
+                const groqResponse = await generateWithGroq(
+                    sysInstruction || SYSTEM_INSTRUCTION,
+                    extractUserPrompt(),
+                    {
+                        temperature: actualGenerationConfig.temperature ?? 0,
+                        jsonMode: actualGenerationConfig.responseMimeType === "application/json"
+                    }
+                );
+                console.log("✅ Groq fallback successful!");
+                return groqResponse;
+            } catch (groqError) {
+                console.error("Groq fallback also failed:", groqError);
+                throw groqError;
+            }
+        }
+
         throw error;
     }
 };
@@ -709,22 +815,46 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
             parts.push({ text: `Analiza el siguiente texto técnico bajo metodología UNGRD:\n\n${input.content}` });
         }
 
-        // Use Helper with Fallback
-        const response = await generateWithFallback({
-            contents: { parts },
-            config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
-                temperature: 0,
-                responseMimeType: "application/json",
-                // responseSchema REMOVED to avoid 'Constraint is too tall' error.
-                // The structure is now enforced via the SYSTEM_INSTRUCTION.
+        // Use Helper with Fallback or specific provider
+        let response;
+
+        if (input.provider === 'groq' && isGroqConfigured()) {
+            console.log("🚀 Using specific provider: GROQ");
+            try {
+                // Extract text prompt from parts for Groq
+                if (input.type === 'pdf') {
+                    console.warn("⚠️ Groq does not support PDF analysis natively. Using available text.");
+                }
+                const textPrompt = parts.map(p => p.text || '').join('\n');
+                response = await generateWithGroq(
+                    SYSTEM_INSTRUCTION,
+                    textPrompt || "Analice el documento adjunto (contenido textual extraído).",
+                    {
+                        temperature: 0,
+                        jsonMode: true
+                    }
+                );
+            } catch (e) {
+                console.error("Groq specific request failed:", e);
+                throw e;
             }
-        });
+        } else {
+            console.log("✨ Using specific provider: GEMINI (Default)");
+            response = await generateWithFallback({
+                contents: { parts },
+                config: {
+                    systemInstruction: SYSTEM_INSTRUCTION,
+                    temperature: 0,
+                    responseMimeType: "application/json",
+                    // responseSchema REMOVED to avoid 'Constraint is too tall' error.
+                    // The structure is now enforced via the SYSTEM_INSTRUCTION.
+                }
+            });
+        }
 
         if (response.text()) {
-            const cleaned = cleanJsonString(response.text());
             try {
-                const parsedData = JSON.parse(cleaned);
+                const parsedData = safeJsonParse<any>(response.text(), "Project Analysis");
                 return sanitizeProjectData(parsedData);
             } catch (e) {
                 console.error("JSON Parse Error", e);
@@ -812,8 +942,7 @@ export const updateProjectWithNewData = async (currentData: ProjectData, input: 
         });
 
         if (response.text()) {
-            const cleaned = cleanJsonString(response.text());
-            const result = JSON.parse(cleaned);
+            const result = safeJsonParse<any>(response.text(), "Update Project");
 
             // MERGE LOGIC WITH CALCULATED METRICS
             const newData = { ...currentData };
@@ -905,8 +1034,7 @@ export const analyzeCapexOpexDeep = async (projectData: ProjectData): Promise<Ca
         }, 60000);
 
         if (response.text()) {
-            const cleaned = cleanJsonString(response.text());
-            return JSON.parse(cleaned);
+            return safeJsonParse(response.text(), "Capex/Opex Deep Analysis");
         }
         throw new Error("No se pudo generar análisis CAPEX/OPEX.");
 
@@ -921,7 +1049,7 @@ export const searchProjectInfo = async (projectData: ProjectData): Promise<Searc
         const query = `Busca información actual, noticias recientes, controversias y estado real del proyecto: ${projectData.projectName} en ${projectData.location.municipality}. Contratista: ${projectData.contractor}. Resumen ejecutivo.`;
 
         // Use Google Search Grounding with Flash 1.5
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const response = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: query }] }],
             tools: [{ googleSearchRetrieval: {} } as any],
@@ -933,7 +1061,7 @@ export const searchProjectInfo = async (projectData: ProjectData): Promise<Searc
 
         // Extract grounding chunks
         const groundingMetadata = res.candidates?.[0]?.groundingMetadata;
-        const chunks = groundingMetadata?.groundingChunks || [];
+        const chunks = (groundingMetadata as any)?.groundingChunks || [];
         chunks.forEach((chunk: any) => {
             if (chunk.web) {
                 sources.push({ title: chunk.web.title, uri: chunk.web.uri });
@@ -980,44 +1108,15 @@ export const analyzePOTAlignment = async (projectData: ProjectData, potPdfBase64
             { text: prompt }
         ];
 
-        // Use fast generator for secondary PDF analysis
         const response = await generateFast({
             contents: { parts },
             config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: SchemaType.OBJECT,
-                    properties: {
-                        complianceScore: { type: SchemaType.NUMBER },
-                        landUseRestrictions: {
-                            type: SchemaType.ARRAY,
-                            items: {
-                                type: SchemaType.OBJECT,
-                                properties: {
-                                    issue: { type: SchemaType.STRING },
-                                    mitigation: { type: SchemaType.STRING }
-                                }
-                            }
-                        },
-                        riskZonesIdentified: {
-                            type: SchemaType.ARRAY,
-                            items: {
-                                type: SchemaType.OBJECT,
-                                properties: {
-                                    issue: { type: SchemaType.STRING },
-                                    mitigation: { type: SchemaType.STRING }
-                                }
-                            }
-                        },
-                        recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } }
-                    }
-                }
+                responseMimeType: "application/json"
             }
         }, 60000); // 60s timeout for PDF
 
         if (response.text()) {
-            const cleaned = cleanJsonString(response.text());
-            return JSON.parse(cleaned);
+            return safeJsonParse(response.text(), "POT Analysis");
         }
         throw new Error("No se pudo analizar el POT.");
 
@@ -1034,6 +1133,7 @@ export const analyzePOTAlignment = async (projectData: ProjectData, potPdfBase64
 export const analyzeActivityDeep = async (activity: ProjectMilestone, projectContext: { name: string, location: string }): Promise<ActivityDeepAnalysis> => {
     try {
         const prompt = `
+        RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
         ROL: INGENIERO CIVIL SENIOR / AUDITOR TÉCNICO (EXPERTO EN OPTIMIZACIÓN DE PROCESOS - VALUE ENGINEERING).
         TAREA: Realizar un análisis de "Ingeniería de Valor" RIGUROSO para una actividad específica.
 
@@ -1046,12 +1146,18 @@ export const analyzeActivityDeep = async (activity: ProjectMilestone, projectCon
         CONTEXTO PROYECTO: ${projectContext.name} en ${projectContext.location}.
 
         INSTRUCCIONES DE RIGOR TÉCNICO:
-        1.  **OptimizationStrategy**: Propón una estrategia basada en rendimientos de maquinaria y materiales (ej. "Sustitución de concreto in-situ por prefabricados clase 4000psi para reducir fraguado en 5 días").
-        2.  **SuggestedTechnologies**: Sugiere 2 tecnologías que IMPACTEN el costo directo (ej. Aditivos acelerantes de alto desempeño, Modelado 4D para detección de interferencias).
-        3.  **SpecificExecutionRisks (CON MITIGACIÓN)**: Riesgos vinculados a la logística real (ej. "Demoras en suministro de mezcla por tráfico en vía única"). Mitigación debe ser técnica.
-        4.  **EfficiencyGainEstimate**: Estima el % de ahorro basado en el costo estimado ${activity.estimatedCost}.
+        1.  **optimizationStrategy** (string): Propón una estrategia basada en rendimientos de maquinaria y materiales (ej. "Sustitución de concreto in-situ por prefabricados clase 4000psi para reducir fraguado en 5 días").
+        2.  **suggestedTechnologies** (array de objetos {name, benefit}): Sugiere 2 tecnologías que IMPACTEN el costo directo (ej. Aditivos acelerantes de alto desempeño, Modelado 4D para detección de interferencias).
+        3.  **specificExecutionRisks** (array de objetos {risk, mitigation}): Riesgos vinculados a la logística real (ej. "Demoras en suministro de mezcla por tráfico en vía única"). Mitigación debe ser técnica.
+        4.  **efficiencyGainEstimate** (string): Estima el % de ahorro basado en el costo estimado.
 
-        SALIDA: JSON Estricto.
+        SALIDA JSON ESTRICTA (TODO EN ESPAÑOL):
+        {
+          "optimizationStrategy": "...",
+          "suggestedTechnologies": [{"name": "...", "benefit": "..."}],
+          "specificExecutionRisks": [{"risk": "...", "mitigation": "..."}],
+          "efficiencyGainEstimate": "10-15%"
+        }
         `;
 
         // Switch to Pro Generation (Chain-of-Thought)
@@ -1066,8 +1172,7 @@ export const analyzeActivityDeep = async (activity: ProjectMilestone, projectCon
         });
 
         if (response.text()) {
-            const cleaned = cleanJsonString(response.text());
-            return JSON.parse(cleaned);
+            return safeJsonParse(response.text(), "Activity Deep Analysis");
         }
         throw new Error("Fallo análisis de actividad");
 
@@ -1102,14 +1207,22 @@ export const askProjectQuestion = async (question: string, projectData: ProjectD
 
 export const generateMitigationSuggestion = async (risk: RiskItem, projectData: ProjectData): Promise<string> => {
     const prompt = `
+  RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
   ROL: ESPECIALISTA EN GESTIÓN DE RIESGOS (ISO 31000).
   PROYECTO: ${projectData.projectName}
   RIESGO: "${risk.risk}" (Impacto: ${risk.impact}, Probabilidad: ${risk.probability})
   
-  TAREA: Generar un plan de mitigación detallado, técnico y accionable.
+  TAREA: Generar un plan de mitigación detallado, técnico y accionable EN ESPAÑOL.
+  
+  Estructura de respuesta:
+  1. Descripción del Riesgo
+  2. Estrategia de Mitigación
+  3. Acciones Específicas (lista numerada)
+  4. Indicadores de Seguimiento
+  5. Responsable Sugerido
   `;
     const response = await generateFast({ contents: prompt });
-    return response.text() || "Plan de mitigación no generado.";
+    return response.text() || "No se pudo generar el plan de mitigación.";
 };
 
 export const analyzeGrekoCronos = async (milestones: ProjectMilestone[], projectData: ProjectData): Promise<GrekoCronosDeepAnalysis> => {
@@ -1143,32 +1256,11 @@ export const analyzePMBOK7 = async (projectData: ProjectData): Promise<PMBOKAnal
     const response = await generateFast({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    principles: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                name: { type: "string" },
-                                englishName: { type: "string" },
-                                score: { type: "number" },
-                                reasoning: { type: "string" }
-                            },
-                            required: ["name", "score", "reasoning"]
-                        }
-                    },
-                    overallObservation: { type: "string" },
-                    auditDate: { type: "string" }
-                },
-                required: ["principles", "overallObservation", "auditDate"]
-            }
+            responseMimeType: "application/json"
         }
     });
 
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "PMBOK Analysis");
     throw new Error("Failed PMBOK Analysis");
 };
 
@@ -1183,22 +1275,10 @@ export const analyzePMBOKPrincipleDeep = async (projectData: ProjectData, princi
     const response = await generateFast({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    diagnosis: { type: "string" },
-                    strengths: { type: "array", items: { type: "string" } },
-                    weaknesses: { type: "array", items: { type: "string" } },
-                    actionableSteps: { type: "array", items: { type: "string" } },
-                    kpiImpact: { type: "string" },
-                    consequenceSimulation: { type: "string" }
-                },
-                required: ["diagnosis", "strengths", "weaknesses", "actionableSteps", "kpiImpact"]
-            }
+            responseMimeType: "application/json"
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "PMBOK Deep Dive");
     throw new Error("Failed Deep Dive");
 };
 
@@ -1221,35 +1301,10 @@ export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<Kn
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    overallKnowledgeScore: { type: "number" },
-                    riskCharacterization: { type: "string" },
-                    modelingAlternatives: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                name: { type: "string" },
-                                type: { type: "string" },
-                                complexity: { type: "string", enum: ["Alta", "Media", "Baja"] },
-                                estimatedCost: { type: "string" },
-                                pros: { type: "array", items: { type: "string" } },
-                                cons: { type: "array", items: { type: "string" } },
-                                recommendationRationale: { type: "string" }
-                            }
-                        }
-                    },
-                    monitoringAlternatives: { type: "array", items: { type: "object", properties: { name: { type: "string" }, type: { type: "string" }, complexity: { type: "string", enum: ["Alta", "Media", "Baja"] }, estimatedCost: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, recommendationRationale: { type: "string" } } } },
-                    criticalDataGaps: { type: "array", items: { type: "object", properties: { gap: { type: "string" }, criticality: { type: "string", enum: ["Alta", "Media", "Baja"] }, impact: { type: "string" }, actionPlan: { type: "string" } } } }
-                },
-                required: ["overallKnowledgeScore", "riskCharacterization", "modelingAlternatives", "monitoringAlternatives", "criticalDataGaps"]
-            }
+            responseMimeType: "application/json"
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Knowledge Analysis");
     throw new Error("Failed Knowledge Analysis");
 };
 
@@ -1273,33 +1328,10 @@ export const analyzeCorrectiveDeep = async (projectData: ProjectData): Promise<C
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    threatDiagnosis: { type: "string" },
-                    engineeringSolutionAudit: { type: "string" },
-                    transversalChecks: {
-                        type: "object",
-                        properties: {
-                            budgetSufficiency: { type: "string" },
-                            timelineFeasibility: { type: "string" },
-                            regulatoryCompliance: { type: "string" }
-                        }
-                    },
-                    vulnerabilityAssessment: { type: "string" },
-                    technicalRigorScore: { type: "number" },
-                    riskOfFailure: { type: "string", enum: ["Alto", "Medio", "Bajo"] },
-                    holisticRecommendations: { type: "array", items: { type: "string" } },
-                    alternativeSolutions: { type: "array", items: { type: "object", properties: { solutionName: { type: "string" }, description: { type: "string" }, pros: { type: "array", items: { type: "string" } }, cons: { type: "array", items: { type: "string" } }, estimatedCostImpact: { type: "string" }, resilienceScore: { type: "number" } } } },
-                    resourceOptimizationAudit: { type: "string" },
-                    costBenefitAnalysis: { type: "string" }
-                },
-                required: ["threatDiagnosis", "engineeringSolutionAudit", "technicalRigorScore", "alternativeSolutions"]
-            }
+            responseMimeType: "application/json"
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Corrective Analysis");
     throw new Error("Failed Corrective Analysis");
 };
 
@@ -1321,35 +1353,35 @@ export const analyzeManagementDeep = async (projectData: ProjectData): Promise<M
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    preparednessScore: { type: "number" },
-                    integratedSpeedIndex: { type: "number" }, // Action 17: ISI Index
-                    contingencyPlanAudit: { type: "string" },
-                    evacuationProtocols: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
-                    commandChain: { type: "object", properties: { clarity: { type: "string", enum: ["Clara", "Ambiguo", "Inexistente"] }, recommendations: { type: "array", items: { type: "string" } } } },
-                    responseLogistics: { type: "object", properties: { strengths: { type: "array", items: { type: "string" } }, weaknesses: { type: "array", items: { type: "string" } } } },
-                    communicationSystemsAudit: { type: "string" },
-                    actionableRecommendations: { type: "array", items: { type: "string" } }
-                },
-                required: ["preparednessScore", "integratedSpeedIndex", "contingencyPlanAudit", "actionableRecommendations"]
-            }
+            responseMimeType: "application/json"
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Management Analysis");
     throw new Error("Failed Management Analysis");
 };
 
 export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData: ProjectData): Promise<BottleneckDeepAnalysis> => {
     const prompt = `
+    RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
+    ROL: AUDITOR FORENSE DE PROYECTOS DE INFRAESTRUCTURA (UNGRD).
+    
     Analiza este cuello de botella legal/técnico:
     Bloqueo: ${bottleneck.processName}
     Descripción: ${bottleneck.description}
+    Entidad Responsable: ${bottleneck.responsibleEntity}
+    Días de Retraso: ${bottleneck.daysDelayed}
     Proyecto: ${projectData.projectName}
     
-    Genera JSON con: rootCause, legalFramework (Leyes Colombia), financialImpactEstimate, strategicActions (array strings), probabilityOfResolution (number).
+    TAREA: Generar un análisis forense profundo EN ESPAÑOL.
+    
+    SALIDA JSON ESTRICTA:
+    {
+      "rootCause": "Causa raíz del bloqueo",
+      "legalFramework": "Marco legal aplicable (Leyes de Colombia)",
+      "financialImpactEstimate": "Estimación del impacto financiero",
+      "strategicActions": ["Acción 1", "Acción 2", "Acción 3"],
+      "probabilityOfResolution": 75
+    }
     `;
     const response = await generateWithFallback({
         contents: prompt,
@@ -1358,8 +1390,8 @@ export const analyzeBottleneckDeep = async (bottleneck: Bottleneck, projectData:
             temperature: 0.2
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
-    throw new Error("Failed Bottleneck Analysis");
+    if (response.text()) return safeJsonParse(response.text(), "Bottleneck Analysis");
+    throw new Error("No se pudo generar el análisis del cuello de botella.");
 };
 
 export const generateAdministrativeDocument = async (bottleneck: Bottleneck, docType: string, projectData: ProjectData): Promise<LegalDocument> => {
@@ -1368,7 +1400,7 @@ export const generateAdministrativeDocument = async (bottleneck: Bottleneck, doc
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Admin Document");
     throw new Error("Failed Document Generation");
 };
 
@@ -1378,7 +1410,7 @@ export const analyzeResourceSufficiency = async (projectData: ProjectData): Prom
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Resource Analysis");
     throw new Error("Failed Resource Analysis");
 };
 
@@ -1401,21 +1433,10 @@ export const analyzeFinancialProtectionDeep = async (projectData: ProjectData): 
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    efficiencyScore: { type: "number" },
-                    coverageGaps: { type: "array", items: { type: "string" } },
-                    redundancies: { type: "array", items: { type: "string" } },
-                    recommendedInstruments: { type: "array", items: { type: "string" } },
-                    strategicAssessment: { type: "string" }
-                },
-                required: ["efficiencyScore", "coverageGaps", "recommendedInstruments", "strategicAssessment"]
-            }
+            responseMimeType: "application/json"
         }
     });
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Financial Protection Analysis");
     throw new Error("Failed Financial Protection Analysis");
 };
 
@@ -1440,49 +1461,10 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    healthScore: { type: "number" },
-                    diagnosis: { type: "string" },
-                    forecast: {
-                        type: "object",
-                        properties: {
-                            eac: { type: "number" },
-                            vac: { type: "number" },
-                            projectedStatus: { type: "string", enum: ["Superávit", "Déficit", "Equilibrio"] }
-                        },
-                        required: ["eac", "vac", "projectedStatus"]
-                    },
-                    concatenationAnalysis: {
-                        type: "object",
-                        properties: {
-                            budgetVsExecutionGap: { type: "string" },
-                            flaggedDiscrepancies: {
-                                type: "array",
-                                items: {
-                                    type: "object",
-                                    properties: {
-                                        activityName: { type: "string" },
-                                        budgetedAmount: { type: "number" },
-                                        executionCost: { type: "number" },
-                                        variance: { type: "string" }
-                                    }
-                                }
-                            }
-                        },
-                        required: ["budgetVsExecutionGap"]
-                    },
-                    optimizationStrategies: { type: "array", items: { type: "object", properties: { title: { type: "string" }, impact: { type: "string" }, action: { type: "string" } } } },
-                    riskItems: { type: "array", items: { type: "object", properties: { item: { type: "string" }, riskLevel: { type: "string", enum: ["Alto", "Medio", "Bajo"] }, reason: { type: "string" } } } },
-                    sensitivityAnalysis: { type: "array", items: { type: "object", properties: { scenario: { type: "string" }, impactOnEAC: { type: "number" }, impactOnTir: { type: "number" }, mitigationStrategy: { type: "string" } } } }
-                },
-                required: ["healthScore", "diagnosis", "forecast", "concatenationAnalysis", "optimizationStrategies", "riskItems"]
-            }
+            responseMimeType: "application/json"
         }
     }, 60000);
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Financial Deep Analysis");
     throw new Error("Failed Financial Deep Analysis");
 };
 
@@ -1512,26 +1494,11 @@ export const analyzeContractorRisk = async (projectData: ProjectData): Promise<C
     const response = await generateWithFallback({
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    name: { type: "string" },
-                    nit: { type: "string" },
-                    suitabilityScore: { type: "number" },
-                    disbursementRisk: { type: "string" },
-                    disbursementRationale: { type: "string" },
-                    redFlags: { type: "array", items: { type: "string" } },
-                    financialHealth: { type: "string" },
-                    experienceValidation: { type: "string" },
-                    summary: { type: "string" }
-                },
-                required: ["name", "nit", "suitabilityScore", "disbursementRisk", "disbursementRationale", "redFlags"]
-            }
+            responseMimeType: "application/json"
         }
     });
 
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Contractor Analysis");
     throw new Error("Failed Contractor Analysis");
 };
 
@@ -1540,29 +1507,35 @@ export const analyzeContractorRisk = async (projectData: ProjectData): Promise<C
 
 export const analyzeCriticalPath = async (milestones: ProjectMilestone[], context: { name: string, objective: string }): Promise<{ updatedMilestones: ProjectMilestone[], analysisSummary: string }> => {
     const prompt = `
-    Calcula la RUTA CRÍTICA(CPM) para estas actividades: ${JSON.stringify(milestones.map(m => ({ code: m.code, desc: m.description, start: m.startDate, end: m.endDate })))}.
-Contexto: ${context.name}.
+    RESPONDER EXCLUSIVAMENTE EN ESPAÑOL.
+    ROL: ESPECIALISTA EN PROGRAMACIÓN DE OBRAS (CPM - Método de Ruta Crítica).
     
-    Output JSON:
-{
-    updatedMilestones: [List of milestones with updated 'isCriticalPath' boolean and 'criticalPathReasoning'],
-    analysisSummary: string(Executive summary of the timeline health)
-}
-`;
+    Calcula la RUTA CRÍTICA para estas actividades: ${JSON.stringify(milestones.map(m => ({ code: m.code, desc: m.description, start: m.startDate, end: m.endDate })))}.
+    Contexto del Proyecto: ${context.name}.
+    
+    TAREA: Identificar las actividades que conforman la ruta crítica y generar un resumen ejecutivo EN ESPAÑOL.
+    
+    SALIDA JSON ESTRICTA:
+    {
+      "updatedMilestones": [
+        {"code": "ACT-1", "desc": "Descripción", "isCriticalPath": true, "criticalPathReasoning": "Razón en español"}
+      ],
+      "analysisSummary": "Resumen ejecutivo del estado del cronograma EN ESPAÑOL."
+    }
+    `;
     const response = await generateFast({
         contents: prompt,
         config: { responseMimeType: "application/json" }
     });
     if (response.text()) {
-        const res = JSON.parse(cleanJsonString(response.text()));
-        // Merge with original to keep other fields
+        const res = safeJsonParse<any>(response.text(), "Critical Path");
         const merged = milestones.map(m => {
-            const update = res.updatedMilestones.find((u: any) => u.desc === m.description || u.code === m.code);
+            const update = res.updatedMilestones?.find((u: any) => u.desc === m.description || u.code === m.code);
             return update ? { ...m, isCriticalPath: update.isCriticalPath, criticalPathReasoning: update.criticalPathReasoning } : m;
         });
-        return { updatedMilestones: merged, analysisSummary: res.analysisSummary };
+        return { updatedMilestones: merged, analysisSummary: res.analysisSummary || "Análisis completado." };
     }
-    throw new Error("Failed CPM Analysis");
+    throw new Error("No se pudo calcular la ruta crítica.");
 };
 
 
@@ -1605,7 +1578,7 @@ TAREA:
             // Removed strict schema for creative engineering solutions
         }
     }, 120000); // 120s timeout for deep thinking
-    if (response.text()) return JSON.parse(cleanJsonString(response.text()));
+    if (response.text()) return safeJsonParse(response.text(), "Value Engineering");
     throw new Error("Failed Value Engineering Analysis");
 };
 
