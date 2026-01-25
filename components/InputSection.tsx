@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Sparkles, FileText, UploadCloud, FileType, AlertCircle, ShieldCheck } from 'lucide-react';
 import { AnalysisInput, BUILD_TIMESTAMP, AnalysisProvider } from '../services/geminiService';
+import { AI_MODELS } from '../services/aiConfig';
 
 interface InputSectionProps {
   onAnalyze: (input: AnalysisInput) => void;
@@ -96,32 +97,49 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
 
             {/* Model Selector */}
             <div className="flex flex-wrap justify-center bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm gap-1">
+              {/* Gemini */}
               <button
                 onClick={() => setSelectedModel('gemini')}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'gemini' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                disabled={!AI_MODELS.gemini.enabled}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${!AI_MODELS.gemini.enabled ? 'opacity-40 cursor-not-allowed' : ''} ${selectedModel === 'gemini' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-slate-400 hover:bg-slate-50'}`}
               >
-                <Sparkles size={14} /> Gemini 1.5
+                <Sparkles size={14} /> {AI_MODELS.gemini.displayName}
+                <span className="text-[8px] opacity-60">{AI_MODELS.gemini.company}</span>
               </button>
+
+              {/* Groq */}
               <button
                 onClick={() => setSelectedModel('groq')}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'groq' ? 'bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                disabled={!AI_MODELS.groq.enabled}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${!AI_MODELS.groq.enabled ? 'opacity-40 cursor-not-allowed' : ''} ${selectedModel === 'groq' ? 'bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200' : 'text-slate-400 hover:bg-slate-50'}`}
               >
                 <div className="w-3 h-3 rounded-full border-2 border-orange-500 flex items-center justify-center"><div className="w-1 bg-orange-500 rounded-full"></div></div>
-                Groq Llama
+                {AI_MODELS.groq.displayName}
+                <span className="text-[8px] opacity-60">{AI_MODELS.groq.company}</span>
               </button>
+
+              {/* OpenAI */}
               <button
                 onClick={() => setSelectedModel('openai')}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'openai' ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                disabled={!AI_MODELS.openai.enabled}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${!AI_MODELS.openai.enabled ? 'opacity-40 cursor-not-allowed' : ''} ${selectedModel === 'openai' ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200' : 'text-slate-400 hover:bg-slate-50'}`}
+                title={!AI_MODELS.openai.enabled ? 'API Key no configurada' : ''}
               >
                 <div className="w-3 h-3 rounded-full bg-emerald-600 flex items-center justify-center text-[8px] text-white">O</div>
-                ChatGPT 4o
+                {AI_MODELS.openai.displayName}
+                <span className="text-[8px] opacity-60">{AI_MODELS.openai.company}</span>
               </button>
+
+              {/* xAI Grok */}
               <button
                 onClick={() => setSelectedModel('xai')}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'xai' ? 'bg-slate-900 text-white shadow-sm ring-1 ring-slate-700' : 'text-slate-400 hover:bg-slate-50'}`}
+                disabled={!AI_MODELS.xai.enabled}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${!AI_MODELS.xai.enabled ? 'opacity-40 cursor-not-allowed' : ''} ${selectedModel === 'xai' ? 'bg-slate-900 text-white shadow-sm ring-1 ring-slate-700' : 'text-slate-400 hover:bg-slate-50'}`}
+                title={!AI_MODELS.xai.enabled ? 'API Key no configurada' : ''}
               >
                 <div className="font-serif text-[10px] italic">/</div>
-                xAI Grok
+                {AI_MODELS.xai.displayName}
+                <span className="text-[8px] opacity-60">{AI_MODELS.xai.company}</span>
               </button>
             </div>
 

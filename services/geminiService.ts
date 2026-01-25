@@ -3,6 +3,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { generateWithGroq, isQuotaError, isGroqConfigured } from "./groqService";
 import { generateWithOpenAI, isOpenAIConfigured } from "./openaiService";
 import { generateWithXai, isXaiConfigured } from "./xaiService";
+import { AI_MODELS, getPrimaryModel, getFallbackModel, isProviderEnabled } from "./aiConfig";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
 const getApiKey = () => {
@@ -25,7 +26,7 @@ if (!API_KEY) {
 
 // VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
 // This helps verify if the deployed code is actually fresh.
-export const BUILD_TIMESTAMP = "Build: Jan 25 - 14:35 PM (Stable Gemini 1.5)";
+export const BUILD_TIMESTAMP = "Build: Jan 25 - 15:05 PM (Multi-AI Fixed)";
 
 let genAI: GoogleGenerativeAI;
 try {
@@ -691,42 +692,48 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
 
     const userPrompt = extractUserPrompt();
 
-    // Strategy 1: Attempt Gemini 1.5 Pro
+    // Strategy 1: Attempt Primary Gemini Model
+    const primaryModel = getPrimaryModel('gemini');
     try {
-        console.log("--- ATTEMPT 1: GEMINI 1.5 PRO ---");
-        const modelPro = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: sysInstruction });
-        const result = await modelPro.generateContent(generateContentRequest);
+        console.log(`--- ATTEMPT 1: GEMINI PRIMARY (${primaryModel}) ---`);
+        const model = genAI.getGenerativeModel({ model: primaryModel, systemInstruction: sysInstruction });
+        const result = await model.generateContent(generateContentRequest);
         return result.response;
     } catch (error: any) {
-        console.warn("Gemini 1.5 Pro failed. Switching to Flash/Fallback...", error);
+        console.warn(`Gemini primary model (${primaryModel}) failed. Trying fallback...`, error);
 
-        // Strategy 2: Attempt Gemini 1.5 Flash
-        try {
-            console.log("--- ATTEMPT 2: GEMINI 1.5 FLASH ---");
-            const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: sysInstruction });
-            const result = await modelFlash.generateContent(generateContentRequest);
-            return result.response;
-        } catch (flashError: any) {
-            console.error("Gemini Flash failed.", flashError);
+        // Strategy 2: Attempt Fallback Gemini Model
+        const fallbackModel = getFallbackModel('gemini');
+        if (fallbackModel) {
+            try {
+                console.log(`--- ATTEMPT 2: GEMINI FALLBACK (${fallbackModel}) ---`);
+                const model = genAI.getGenerativeModel({ model: fallbackModel, systemInstruction: sysInstruction });
+                const result = await model.generateContent(generateContentRequest);
+                return result.response;
+            } catch (fallbackError: any) {
+                console.error(`Gemini fallback (${fallbackModel}) also failed.`, fallbackError);
 
-            // Strategy 3: Attempt OpenAI Failover
-            if (isOpenAIConfigured()) {
-                try {
-                    console.log("--- ATTEMPT 3: OPENAI FAILOVER ---");
-                    return await generateWithOpenAI(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
-                } catch (oe) { console.error("OpenAI Fallback failed.", oe); }
+                // Strategy 3: Attempt OpenAI Failover
+                if (isOpenAIConfigured()) {
+                    try {
+                        console.log("--- ATTEMPT 3: OPENAI FAILOVER ---");
+                        return await generateWithOpenAI(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
+                    } catch (oe) { console.error("OpenAI Fallback failed.", oe); }
+                }
+
+                // Strategy 4: Attempt Groq Failover
+                if (isGroqConfigured()) {
+                    try {
+                        console.log("--- ATTEMPT 4: GROQ FAILOVER ---");
+                        return await generateWithGroq(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
+                    } catch (ge) { console.error("Groq Fallback failed.", ge); }
+                }
+
+                throw error;
             }
-
-            // Strategy 4: Attempt Groq Failover
-            if (isGroqConfigured()) {
-                try {
-                    console.log("--- ATTEMPT 4: GROQ FAILOVER ---");
-                    return await generateWithGroq(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
-                } catch (ge) { console.error("Groq Fallback failed.", ge); }
-            }
-
-            throw error;
         }
+
+        throw error;
     }
 };
 
