@@ -764,14 +764,24 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
         let response;
 
         if (input.provider === 'groq' && isGroqConfigured()) {
+            if (input.type === 'pdf') throw new Error("Groq API does not support PDF analysis natively. Please convert to text or use Gemini.");
             console.log("🚀 Forced provider: GROQ");
             const textPrompt = parts.map(p => p.text || '').join('\n');
             response = await generateWithGroq(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
         } else if (input.provider === 'openai' && isOpenAIConfigured()) {
             console.log("🚀 Forced provider: OPENAI");
-            const textPrompt = parts.map(p => p.text || '').join('\n');
-            response = await generateWithOpenAI(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
+            let promptContent = "";
+            if (input.type === 'pdf') {
+                // For OpenAI, we can't easily send PDF base64 as text. 
+                // GPT-4o supports images but PDF support via API is usually file-upload based (Assistants) or image-based.
+                // For this 'chat completion' implementation, we restrict to text or throw error.
+                throw new Error("OpenAI direct API does not support PDF base64. Please copy/paste text or use Gemini.");
+            } else {
+                promptContent = parts.map(p => p.text || '').join('\n');
+            }
+            response = await generateWithOpenAI(SYSTEM_INSTRUCTION, promptContent, { jsonMode: true });
         } else if (input.provider === 'xai' && isXaiConfigured()) {
+            if (input.type === 'pdf') throw new Error("xAI Grok does not support PDF analysis natively. Please use text.");
             console.log("🚀 Forced provider: XAI (Grok)");
             const textPrompt = parts.map(p => p.text || '').join('\n');
             response = await generateWithXai(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
