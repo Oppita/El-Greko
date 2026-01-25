@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Sparkles, FileText, UploadCloud, FileType, AlertCircle, ShieldCheck } from 'lucide-react';
-import { AnalysisInput, BUILD_TIMESTAMP } from '../services/geminiService';
+import { AnalysisInput, BUILD_TIMESTAMP, AnalysisProvider } from '../services/geminiService';
 
 interface InputSectionProps {
   onAnalyze: (input: AnalysisInput) => void;
@@ -39,7 +39,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
   const [inputText, setInputText] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<'gemini' | 'groq'>('gemini');
+  const [selectedModel, setSelectedModel] = useState<AnalysisProvider>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -95,22 +95,34 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
           <div className="p-10 min-h-[450px] flex flex-col justify-center bg-gray-50/50 relative">
 
             {/* Model Selector */}
-            <div className="flex justify-center mb-8">
-              <div className="flex bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm">
-                <button
-                  onClick={() => setSelectedModel('gemini')}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'gemini' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
-                  <Sparkles size={14} /> Gemini 1.5 Pro
-                </button>
-                <button
-                  onClick={() => setSelectedModel('groq')}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'groq' ? 'bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200' : 'text-gray-400 hover:bg-gray-50'}`}
-                >
-                  <div className="w-3.5 h-3.5 rounded-full border-2 border-orange-500 flex items-center justify-center"><div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div></div>
-                  Groq Llama 3.3
-                </button>
-              </div>
+            <div className="flex flex-wrap justify-center bg-white border border-gray-200 p-1.5 rounded-xl shadow-sm gap-1">
+              <button
+                onClick={() => setSelectedModel('gemini')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'gemini' ? 'bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'text-slate-400 hover:bg-slate-50'}`}
+              >
+                <Sparkles size={14} /> Gemini 1.5
+              </button>
+              <button
+                onClick={() => setSelectedModel('groq')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'groq' ? 'bg-orange-50 text-orange-700 shadow-sm ring-1 ring-orange-200' : 'text-slate-400 hover:bg-slate-50'}`}
+              >
+                <div className="w-3 h-3 rounded-full border-2 border-orange-500 flex items-center justify-center"><div className="w-1 bg-orange-500 rounded-full"></div></div>
+                Groq Llama
+              </button>
+              <button
+                onClick={() => setSelectedModel('openai')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'openai' ? 'bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200' : 'text-slate-400 hover:bg-slate-50'}`}
+              >
+                <div className="w-3 h-3 rounded-full bg-emerald-600 flex items-center justify-center text-[8px] text-white">O</div>
+                ChatGPT 4o
+              </button>
+              <button
+                onClick={() => setSelectedModel('xai')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${selectedModel === 'xai' ? 'bg-slate-900 text-white shadow-sm ring-1 ring-slate-700' : 'text-slate-400 hover:bg-slate-50'}`}
+              >
+                <div className="font-serif text-[10px] italic">/</div>
+                xAI Grok
+              </button>
             </div>
 
             {localError && (
@@ -160,7 +172,7 @@ export const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, isLoading
 
         <div className="mt-8 flex justify-center gap-12 text-xs text-gray-400 font-bold uppercase tracking-[0.2em]">
           <span className="flex items-center gap-2"><ShieldCheck size={16} /> Encriptación Militar</span>
-          <span className={`flex items-center gap-2 transition-colors ${selectedModel === 'groq' ? 'text-orange-600' : ''}`}><Sparkles size={16} /> {selectedModel === 'groq' ? 'Powered by Groq' : 'Gemini 1.5 Pro'}</span>
+          <span className={`flex items-center gap-2 transition-colors ${selectedModel === 'groq' ? 'text-orange-600' : selectedModel === 'openai' ? 'text-emerald-600' : ''}`}><Sparkles size={16} /> {selectedModel === 'groq' ? 'Powered by Groq' : selectedModel === 'openai' ? 'Powered by OpenAI' : selectedModel === 'xai' ? 'Powered by xAI' : 'Gemini 1.5 Pro'}</span>
           <span className="opacity-50 text-[10px]">{BUILD_TIMESTAMP || "v1.0"}</span>
         </div>
       </div>

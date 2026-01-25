@@ -1,6 +1,8 @@
 
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { generateWithGroq, isQuotaError, isGroqConfigured } from "./groqService";
+import { generateWithOpenAI, isOpenAIConfigured } from "./openaiService";
+import { generateWithXai, isXaiConfigured } from "./xaiService";
 import { ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, ProgressAudit, CorrectiveDeepAnalysis, ProjectMilestone, ActivityDeepAnalysis, KnowledgeDeepAnalysis, ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, EvolutionLog, CapexOpexDeepAnalysis, ValueEngineeringAction } from "../types";
 
 const getApiKey = () => {
@@ -116,10 +118,12 @@ interface Output {
 }
 `;
 
+export type AnalysisProvider = 'gemini' | 'groq' | 'openai' | 'xai';
+
 export interface AnalysisInput {
     type: 'text' | 'pdf' | 'image';
     content: string; // Base64 string for PDF/Image or raw text
-    provider?: 'gemini' | 'groq'; // User selected provider
+    provider?: AnalysisProvider; // User selected provider
 }
 
 // --- UTILITIES ---
@@ -659,17 +663,10 @@ const normalizeContents = (contents: any): any[] => {
     return [{ role: 'user', parts: [{ text: "No content provided." }] }];
 };
 
+// --- FALLBACK-AWARE GENERATION (Master Controller) ---
 const generateWithFallback = async (requestParams: any, timeoutMs: number = 180000) => {
-    const sysInstruction = requestParams.generationConfig?.systemInstruction || requestParams.config?.systemInstruction;
-
-    const modelPro = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro",
-        systemInstruction: sysInstruction
-    });
-
-    const actualGenerationConfig = {
-        ...(requestParams.generationConfig || requestParams.config || {}),
-    };
+    const sysInstruction = requestParams.generationConfig?.systemInstruction || requestParams.config?.systemInstruction || SYSTEM_INSTRUCTION;
+    const actualGenerationConfig = { ...(requestParams.generationConfig || requestParams.config || {}) };
     delete actualGenerationConfig.systemInstruction;
 
     const generateContentRequest = {
@@ -677,7 +674,6 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
         generationConfig: actualGenerationConfig
     };
 
-    // Extract user prompt text for Groq fallback
     const extractUserPrompt = (): string => {
         const contents = generateContentRequest.contents;
         let allText = "";
@@ -690,111 +686,53 @@ const generateWithFallback = async (requestParams: any, timeoutMs: number = 1800
                 }
             }
         }
-        return allText.trim() || "Analyze the provided content.";
+        return allText.trim() || "Analyze project data.";
     };
 
+    const userPrompt = extractUserPrompt();
+
+    // Strategy 1: Attempt Gemini 1.5 Pro
     try {
+        console.log("--- ATTEMPT 1: GEMINI 1.5 PRO ---");
+        const modelPro = genAI.getGenerativeModel({ model: "gemini-1.5-pro", systemInstruction: sysInstruction });
         const result = await modelPro.generateContent(generateContentRequest);
         return result.response;
     } catch (error: any) {
-        console.warn("Gemini 1.5 Pro failed. Retrying with Gemini 1.5 Flash...", error);
+        console.warn("Gemini 1.5 Pro failed. Switching to Flash/Fallback...", error);
 
+        // Strategy 2: Attempt Gemini 1.5 Flash
         try {
-            const modelFlash = genAI.getGenerativeModel({
-                model: "gemini-1.5-flash",
-                systemInstruction: sysInstruction
-            });
+            console.log("--- ATTEMPT 2: GEMINI 1.5 FLASH ---");
+            const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: sysInstruction });
             const result = await modelFlash.generateContent(generateContentRequest);
             return result.response;
-        } catch (err2: any) {
-            // Check if it's a quota error and Groq is available
-            if (isQuotaError(err2) && isGroqConfigured()) {
-                console.warn("⚠️ Gemini quota exceeded. Falling back to Groq Llama 3.3...");
+        } catch (flashError: any) {
+            console.error("Gemini Flash failed.", flashError);
 
+            // Strategy 3: Attempt OpenAI Failover
+            if (isOpenAIConfigured()) {
                 try {
-                    const groqResponse = await generateWithGroq(
-                        sysInstruction || SYSTEM_INSTRUCTION,
-                        extractUserPrompt(),
-                        {
-                            temperature: actualGenerationConfig.temperature ?? 0,
-                            jsonMode: actualGenerationConfig.responseMimeType === "application/json"
-                        }
-                    );
-                    console.log("✅ Groq fallback successful!");
-                    return groqResponse;
-                } catch (groqError) {
-                    console.error("Groq fallback also failed:", groqError);
-                    throw groqError;
-                }
+                    console.log("--- ATTEMPT 3: OPENAI FAILOVER ---");
+                    return await generateWithOpenAI(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
+                } catch (oe) { console.error("OpenAI Fallback failed.", oe); }
             }
-            throw err2;
+
+            // Strategy 4: Attempt Groq Failover
+            if (isGroqConfigured()) {
+                try {
+                    console.log("--- ATTEMPT 4: GROQ FAILOVER ---");
+                    return await generateWithGroq(sysInstruction, userPrompt, { jsonMode: actualGenerationConfig.responseMimeType === "application/json" });
+                } catch (ge) { console.error("Groq Fallback failed.", ge); }
+            }
+
+            throw error;
         }
     }
 };
 
-// --- FAST GENERATION HELPER (WITH GROQ FALLBACK) ---
-const generateFast = async (configParams: any, timeoutMs: number = 30000) => {
-    const sysInstruction = configParams.generationConfig?.systemInstruction || configParams.config?.systemInstruction;
-
-    const actualGenerationConfig = {
-        ...(configParams.generationConfig || configParams.config || {}),
-    };
-    delete actualGenerationConfig.systemInstruction;
-
-    const generateContentRequest = {
-        contents: normalizeContents(configParams.contents),
-        generationConfig: actualGenerationConfig
-    };
-
-    // Extract user prompt for Groq fallback
-    const extractUserPrompt = (): string => {
-        const contents = generateContentRequest.contents;
-        if (Array.isArray(contents)) {
-            for (const content of contents) {
-                if (content.parts) {
-                    for (const part of content.parts) {
-                        if (part.text) return part.text;
-                    }
-                }
-            }
-        }
-        return "Analyze the provided content.";
-    };
-
-    try {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            systemInstruction: sysInstruction
-        });
-
-        const result = await model.generateContent(generateContentRequest);
-        return result.response;
-    } catch (error: any) {
-        console.error("Fast generation failed:", error);
-
-        // Fallback to Groq if quota exceeded
-        if (isQuotaError(error) && isGroqConfigured()) {
-            console.warn("⚠️ Gemini Flash quota exceeded. Falling back to Groq...");
-
-            try {
-                const groqResponse = await generateWithGroq(
-                    sysInstruction || SYSTEM_INSTRUCTION,
-                    extractUserPrompt(),
-                    {
-                        temperature: actualGenerationConfig.temperature ?? 0,
-                        jsonMode: actualGenerationConfig.responseMimeType === "application/json"
-                    }
-                );
-                console.log("✅ Groq fallback successful!");
-                return groqResponse;
-            } catch (groqError) {
-                console.error("Groq fallback also failed:", groqError);
-                throw groqError;
-            }
-        }
-
-        throw error;
-    }
+// --- FAST GENERATION HELPER ---
+const generateFast = async (configParams: any) => {
+    return generateWithFallback(configParams); // Use master controller for robustness
 };
 
 export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData> => {
@@ -819,27 +757,19 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
         let response;
 
         if (input.provider === 'groq' && isGroqConfigured()) {
-            console.log("🚀 Using specific provider: GROQ");
-            try {
-                // Extract text prompt from parts for Groq
-                if (input.type === 'pdf') {
-                    console.warn("⚠️ Groq does not support PDF analysis natively. Using available text.");
-                }
-                const textPrompt = parts.map(p => p.text || '').join('\n');
-                response = await generateWithGroq(
-                    SYSTEM_INSTRUCTION,
-                    textPrompt || "Analice el documento adjunto (contenido textual extraído).",
-                    {
-                        temperature: 0,
-                        jsonMode: true
-                    }
-                );
-            } catch (e) {
-                console.error("Groq specific request failed:", e);
-                throw e;
-            }
+            console.log("🚀 Forced provider: GROQ");
+            const textPrompt = parts.map(p => p.text || '').join('\n');
+            response = await generateWithGroq(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
+        } else if (input.provider === 'openai' && isOpenAIConfigured()) {
+            console.log("🚀 Forced provider: OPENAI");
+            const textPrompt = parts.map(p => p.text || '').join('\n');
+            response = await generateWithOpenAI(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
+        } else if (input.provider === 'xai' && isXaiConfigured()) {
+            console.log("🚀 Forced provider: XAI (Grok)");
+            const textPrompt = parts.map(p => p.text || '').join('\n');
+            response = await generateWithXai(SYSTEM_INSTRUCTION, textPrompt, { jsonMode: true });
         } else {
-            console.log("✨ Using specific provider: GEMINI (Default)");
+            console.log("✨ Using Default Orchestrator (Priority: Gemini)");
             response = await generateWithFallback({
                 contents: { parts },
                 config: {
@@ -1031,7 +961,7 @@ export const analyzeCapexOpexDeep = async (projectData: ProjectData): Promise<Ca
                 temperature: 0.2,
                 responseMimeType: "application/json"
             }
-        }, 60000);
+        });
 
         if (response.text()) {
             return safeJsonParse(response.text(), "Capex/Opex Deep Analysis");
@@ -1113,7 +1043,7 @@ export const analyzePOTAlignment = async (projectData: ProjectData, potPdfBase64
             config: {
                 responseMimeType: "application/json"
             }
-        }, 60000); // 60s timeout for PDF
+        });
 
         if (response.text()) {
             return safeJsonParse(response.text(), "POT Analysis");
