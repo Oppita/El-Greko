@@ -26,7 +26,7 @@ if (!API_KEY) {
 
 // VERSION MARKER - TIMESTAMP: 2026-01-18 T 12:15:00
 // This helps verify if the deployed code is actually fresh.
-export const BUILD_TIMESTAMP = "Build: Jan 25 - 15:05 PM (Multi-AI Fixed)";
+export const BUILD_TIMESTAMP = "Build: Jan 25 - 15:45 PM (Full Multi-AI Enabled)";
 
 let genAI: GoogleGenerativeAI;
 try {
