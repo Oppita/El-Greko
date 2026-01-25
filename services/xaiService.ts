@@ -39,7 +39,7 @@ export const generateWithXai = async (
     ];
 
     const requestBody: any = {
-        model: 'grok-1',
+        model: 'grok-beta',
         messages,
         temperature: options.temperature ?? 0,
         stream: false

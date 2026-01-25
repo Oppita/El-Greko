@@ -35,9 +35,9 @@ export const AI_MODELS: Record<AIProvider, AIModelConfig> = {
         enabled: true                           // Enabled with provided key
     },
     xai: {
-        primary: 'grok-2-latest',
-        fallback: 'grok-beta',
-        displayName: 'Grok 2',
+        primary: 'grok-beta',
+        fallback: 'grok-2-latest',
+        displayName: 'Grok Beta',
         company: 'xAI',
         enabled: true                           // Enabled with provided key
     }
