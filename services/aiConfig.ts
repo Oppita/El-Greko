@@ -15,9 +15,9 @@ export interface AIModelConfig {
 
 export const AI_MODELS: Record<AIProvider, AIModelConfig> = {
     gemini: {
-        primary: 'gemini-1.5-flash',           // Confirmed working with current API key
-        fallback: 'gemini-pro',                 // Legacy model, stable
-        displayName: 'Gemini Flash 1.5',
+        primary: 'gemini-2.5-flash',           // ✅ Available in your API key
+        fallback: 'gemini-2.5-pro',             // ✅ Premium fallback
+        displayName: 'Gemini 2.5 Flash',
         company: 'Google',
         enabled: true
     },
