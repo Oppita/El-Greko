@@ -1,62 +1,62 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { 
-    ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck, 
-    POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis, 
-    BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile, 
-    CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis, 
-    ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult, 
+import {
+    ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck,
+    POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis,
+    BottleneckDeepAnalysis, LegalDocument, ResourceAnalysis, ContractorProfile,
+    CorrectiveDeepAnalysis, ActivityDeepAnalysis, KnowledgeDeepAnalysis,
+    ManagementDeepAnalysis, GrekoCronosDeepAnalysis, FinancialDeepAnalysis, SearchResult,
     EvolutionLog, ProjectMilestone, SPFDeepAnalysis, SocialEcosystem
 } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export interface AnalysisInput {
-  type: 'pdf' | 'text';
-  content: string;
+    type: 'pdf' | 'text';
+    content: string;
 }
 
 const SYSTEM_INSTRUCTION = "Eres 'El Greko', un auditor forense de infraestructura de élite, experto en econometría de proyectos, estándar PMI (PMBOK 7), gestión del riesgo (ISO 31000) y análisis de sistemas complejos (SPF - NASA). Tu objetivo es la protección del patrimonio público mediante un rigor técnico obsesivo.";
 
 function cleanJsonString(text: string): string {
-  if (!text) return "{}";
-  
-  // 1. Try strict parsing first (best case)
-  try {
-      JSON.parse(text);
-      return text;
-  } catch (e) {
-      // Continue
-  }
+    if (!text) return "{}";
 
-  // 2. Try extracting from markdown code blocks
-  const markdownMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-  if (markdownMatch && markdownMatch[1]) {
-      try {
-          // Verify it parses
-          JSON.parse(markdownMatch[1]); 
-          return markdownMatch[1];
-      } catch (e) {
-          // If markdown content is bad, fall through to brace matching
-      }
-  }
+    // 1. Try strict parsing first (best case)
+    try {
+        JSON.parse(text);
+        return text;
+    } catch (e) {
+        // Continue
+    }
 
-  // 3. Fallback: Find outermost braces
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
-  
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      const candidate = text.substring(firstBrace, lastBrace + 1);
-      // Attempt to clean trailing commas or other common LLM json errors if needed in future
-      return candidate;
-  }
-  
-  return "{}";
+    // 2. Try extracting from markdown code blocks
+    const markdownMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    if (markdownMatch && markdownMatch[1]) {
+        try {
+            // Verify it parses
+            JSON.parse(markdownMatch[1]);
+            return markdownMatch[1];
+        } catch (e) {
+            // If markdown content is bad, fall through to brace matching
+        }
+    }
+
+    // 3. Fallback: Find outermost braces
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const candidate = text.substring(firstBrace, lastBrace + 1);
+        // Attempt to clean trailing commas or other common LLM json errors if needed in future
+        return candidate;
+    }
+
+    return "{}";
 }
 
 async function generateWithFallback(params: { contents: any, config?: any, model?: string }) {
     const makeRequest = async (modelName: string) => {
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error("Timeout waiting for AI response")), 60000) // 60s timeout
         );
 
@@ -75,14 +75,14 @@ async function generateWithFallback(params: { contents: any, config?: any, model
         return await makeRequest(params.model || 'gemini-3-flash-preview');
     } catch (error: any) {
         console.warn(`Primary model ${params.model} failed, retrying with fallback...`, error);
-        
+
         // Fallback attempt (switch to flash if pro failed, or retry same)
         try {
-             const fallbackModel = params.model?.includes('pro') ? 'gemini-3-flash-preview' : 'gemini-3-flash-preview';
-             return await makeRequest(fallbackModel);
+            const fallbackModel = params.model?.includes('pro') ? 'gemini-3-flash-preview' : 'gemini-3-flash-preview';
+            return await makeRequest(fallbackModel);
         } catch (retryError) {
-             console.error("Gemini API Error (Retry failed):", retryError);
-             throw new Error("Error connecting to AI service. Please try again with a smaller document.");
+            console.error("Gemini API Error (Retry failed):", retryError);
+            throw new Error("Error connecting to AI service. Please try again with a smaller document.");
         }
     }
 }
@@ -98,13 +98,13 @@ async function generateFast(prompt: string, schema?: Schema, systemInstruction?:
             temperature: 0.2,
         }
     });
-    
+
     try {
         const cleaned = cleanJsonString(response.text || "{}");
         return JSON.parse(cleaned);
     } catch (e) {
         console.error("JSON Parse Error in generateFast:", e);
-        return {}; 
+        return {};
     }
 }
 
@@ -115,8 +115,9 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
     } else {
         parts.push({ text: input.content });
     }
-    
-    parts.push({ text: `
+
+    parts.push({
+        text: `
     ACTÚA COMO UN AUDITOR FORENSE INTEGRAL (TÉCNICO, FINANCIERO Y SOCIAL).
     
     TAREA: Extraer y analizar datos del proyecto.
@@ -217,7 +218,7 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
     try {
         // Use flash-preview for speed and reliability on large documents
         const response = await generateWithFallback({
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-3-flash-preview',
             contents: parts,
             config: {
                 responseMimeType: 'application/json',
@@ -225,15 +226,15 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
                 systemInstruction: SYSTEM_INSTRUCTION,
             }
         });
-        
+
         let rawData: any = {};
         try {
-             rawData = JSON.parse(cleanJsonString(response.text || "{}"));
-        } catch(e) {
-             console.error("Unexpected JSON Parse Error (Main Analysis):", e);
-             rawData = {};
+            rawData = JSON.parse(cleanJsonString(response.text || "{}"));
+        } catch (e) {
+            console.error("Unexpected JSON Parse Error (Main Analysis):", e);
+            rawData = {};
         }
-        
+
         return {
             ...INITIAL_PROJECT_DATA,
             ...rawData,
@@ -268,7 +269,7 @@ export const analyzeSPFDeep = async (itemDescription: string, projectData: Proje
 export const generateAdministrativeDocument = async (bottleneck: Bottleneck, type: 'petition' | 'memo' | 'meeting', projectData: ProjectData): Promise<LegalDocument> => { const prompt = `Genera un documento legal tipo "${type}" para resolver el bloqueo: "${bottleneck.processName}". Proyecto: ${projectData.projectName}. Contratista: ${projectData.contractor}. El documento debe ser formal, jurídico y listo para firmar.`; return generateFast(prompt, { type: Type.OBJECT, properties: { title: { type: Type.STRING }, content: { type: Type.STRING }, recipient: { type: Type.STRING } } }); };
 export const analyzeResourceSufficiency = async (projectData: ProjectData): Promise<ResourceAnalysis> => { const prompt = `Audita la suficiencia de recursos para el proyecto "${projectData.projectName}" con presupuesto ${projectData.totalBudget}. Analiza si el personal y maquinaria son adecuados para el alcance descrito.`; return generateFast(prompt, { type: Type.OBJECT, properties: { sufficiencyAssessment: { type: Type.STRING }, personnelRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } }, machineryRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } }, technologySuggestions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, application: { type: Type.STRING }, benefit: { type: Type.STRING } } } }, efficiencyScore: { type: Type.NUMBER } } }); };
 
-export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<FinancialDeepAnalysis> => { 
+export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<FinancialDeepAnalysis> => {
     const prompt = `Realiza una auditoría financiera forense predictiva del proyecto "${projectData.projectName}". Presupuesto: ${projectData.totalBudget}, Ejecutado: ${projectData.spentBudget}.
     
     Adicionalmente, calcula el ANÁLISIS DE PARIDAD DE PODER ADQUISITIVO (BIG MAC INDEX) para Colombia vs USA.
@@ -278,58 +279,58 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
     - Compara con la TRM actual (aprox 4150 o la real).
     - Determina si el Peso Colombiano está devaluado o sobrevaluado y cómo esto afecta la importación de materiales del proyecto.
     `;
-    return generateFast(prompt, { 
-        type: Type.OBJECT, 
-        properties: { 
-            healthScore: { type: Type.NUMBER }, 
-            diagnosis: { type: Type.STRING }, 
-            forecast: { 
-                type: Type.OBJECT, 
-                properties: { 
-                    eac: { type: Type.NUMBER }, 
-                    vac: { type: Type.NUMBER }, 
-                    projectedStatus: { type: Type.STRING, enum: ['Superávit', 'Déficit', 'Equilibrio'] } 
-                } 
-            }, 
-            concatenationAnalysis: { 
-                type: Type.OBJECT, 
-                properties: { 
-                    budgetVsExecutionGap: { type: Type.STRING }, 
-                    flaggedDiscrepancies: { 
-                        type: Type.ARRAY, 
-                        items: { 
-                            type: Type.OBJECT, 
-                            properties: { 
-                                activityName: { type: Type.STRING }, 
-                                budgetedAmount: { type: Type.NUMBER }, 
-                                executionCost: { type: Type.NUMBER }, 
-                                variance: { type: Type.STRING } 
-                            } 
-                        } 
-                    } 
-                } 
-            }, 
-            optimizationStrategies: { 
-                type: Type.ARRAY, 
-                items: { 
-                    type: Type.OBJECT, 
-                    properties: { 
-                        title: { type: Type.STRING }, 
-                        impact: { type: Type.STRING }, 
-                        action: { type: Type.STRING } 
-                    } 
-                } 
-            }, 
-            riskItems: { 
-                type: Type.ARRAY, 
-                items: { 
-                    type: Type.OBJECT, 
-                    properties: { 
-                        item: { type: Type.STRING }, 
-                        riskLevel: { type: Type.STRING }, 
-                        reason: { type: Type.STRING } 
-                    } 
-                } 
+    return generateFast(prompt, {
+        type: Type.OBJECT,
+        properties: {
+            healthScore: { type: Type.NUMBER },
+            diagnosis: { type: Type.STRING },
+            forecast: {
+                type: Type.OBJECT,
+                properties: {
+                    eac: { type: Type.NUMBER },
+                    vac: { type: Type.NUMBER },
+                    projectedStatus: { type: Type.STRING, enum: ['Superávit', 'Déficit', 'Equilibrio'] }
+                }
+            },
+            concatenationAnalysis: {
+                type: Type.OBJECT,
+                properties: {
+                    budgetVsExecutionGap: { type: Type.STRING },
+                    flaggedDiscrepancies: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                activityName: { type: Type.STRING },
+                                budgetedAmount: { type: Type.NUMBER },
+                                executionCost: { type: Type.NUMBER },
+                                variance: { type: Type.STRING }
+                            }
+                        }
+                    }
+                }
+            },
+            optimizationStrategies: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING },
+                        impact: { type: Type.STRING },
+                        action: { type: Type.STRING }
+                    }
+                }
+            },
+            riskItems: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        item: { type: Type.STRING },
+                        riskLevel: { type: Type.STRING },
+                        reason: { type: Type.STRING }
+                    }
+                }
             },
             bigMacIndex: {
                 type: Type.OBJECT,
@@ -344,8 +345,8 @@ export const analyzeFinancialDeep = async (projectData: ProjectData): Promise<Fi
                     purchasingPowerParityAction: { type: Type.STRING }
                 }
             }
-        } 
-    }); 
+        }
+    });
 };
 
 export const analyzeContractorRisk = async (projectData: ProjectData): Promise<ContractorProfile> => { const prompt = `Realiza un perfil de riesgo forense del contratista "${projectData.contractor}" (NIT: ${projectData.nit}). Evalúa capacidad financiera, experiencia probable y riesgos de corrupción o incumplimiento.`; return generateFast(prompt, { type: Type.OBJECT, properties: { name: { type: Type.STRING }, nit: { type: Type.STRING }, suitabilityScore: { type: Type.NUMBER }, kCapacity: { type: Type.STRING }, financialHealth: { type: Type.STRING }, disbursementRisk: { type: Type.STRING }, disbursementRationale: { type: Type.STRING }, redFlags: { type: Type.ARRAY, items: { type: Type.STRING } }, summary: { type: Type.STRING } } }); };
@@ -354,20 +355,20 @@ export const analyzeCriticalPath = async (milestones: ProjectMilestone[], projec
 export const analyzeActivityDeep = async (milestone: ProjectMilestone, context: { name: string, location: string, phase: string, type: string }): Promise<ActivityDeepAnalysis> => { const prompt = `INGENIERÍA DE VALOR ESPECÍFICA PARA LA ACTIVIDAD: "${milestone.description}". CONTEXTO: Proyecto: ${context.name}, Ubicación: ${context.location}. INSTRUCCIONES: Estrategia de optimización técnica, Tecnologías modernas, Riesgos de ejecución, Eficiencia cuantificable.`; return generateFast(prompt, { type: Type.OBJECT, properties: { optimizationStrategy: { type: Type.STRING }, suggestedTechnologies: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, benefit: { type: Type.STRING } } } }, specificExecutionRisks: { type: Type.ARRAY, items: { type: Type.STRING } }, efficiencyGainEstimate: { type: Type.STRING } } }); };
 export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<KnowledgeDeepAnalysis> => { const prompt = `Análisis de Conocimiento del Riesgo (Ley 1523) para "${projectData.projectName}". Evalúa estudios técnicos, vacíos de información y alternativas de modelamiento.`; return generateFast(prompt, { type: Type.OBJECT, properties: { overallKnowledgeScore: { type: Type.NUMBER }, riskCharacterization: { type: Type.STRING }, criticalDataGaps: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { gap: { type: Type.STRING }, criticality: { type: Type.STRING }, impact: { type: Type.STRING }, actionPlan: { type: Type.STRING } } } }, modelingAlternatives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, type: { type: Type.STRING }, estimatedCost: { type: Type.STRING } } } }, monitoringAlternatives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING } } } } } }); };
 export const analyzeManagementDeep = async (projectData: ProjectData): Promise<ManagementDeepAnalysis> => { const prompt = `Evaluación de Preparación para Respuesta a Desastres en el proyecto "${projectData.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { preparednessScore: { type: Type.NUMBER }, contingencyPlanAudit: { type: Type.STRING }, evacuationProtocols: { type: Type.OBJECT, properties: { strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } } } }, commandChain: { type: Type.OBJECT, properties: { clarity: { type: Type.STRING }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } } } }, responseLogistics: { type: Type.OBJECT, properties: { strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } } } }, communicationSystemsAudit: { type: Type.STRING }, actionableRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } } } }); };
-export const analyzePOTAlignment = async (projectData: ProjectData, pdfBase64: string): Promise<POTAnalysis> => { const prompt = `Analiza si el proyecto "${projectData.projectName}" cumple con el POT adjunto. Identifica restricciones de uso de suelo, zonas de riesgo y cumplimiento normativo.`; const response = await generateWithFallback({ contents: [ { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } }, { text: prompt } ], config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { complianceScore: { type: Type.NUMBER }, landUseRestrictions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }, riskZonesIdentified: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } } } } } }); return JSON.parse(cleanJsonString(response.text || "{}")); };
-export const updateProjectWithNewData = async (currentData: ProjectData, input: { type: 'pdf' | 'text', content: string }): Promise<ProjectData> => { const prompt = `ACTUALIZACIÓN DE PROYECTO (AUDITORÍA DE AVANCE). Proyecto Actual: ${JSON.stringify({ name: currentData.projectName, budget: currentData.totalBudget, progress: currentData.progressPercentage })}. Analiza la NUEVA información y determina: Nuevos avances, Cambios en fechas, Log de cambios forense (EvolutionLog). Devuelve los campos actualizados.`; const parts: any[] = [{ text: prompt }]; if (input.type === 'pdf') parts.push({ inlineData: { mimeType: 'application/pdf', data: input.content } }); else parts.push({ text: input.content }); const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: parts, config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { progressPercentage: { type: Type.NUMBER }, spentBudget: { type: Type.NUMBER }, milestoneUpdates: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, progress: { type: Type.NUMBER }, status: { type: Type.STRING } } } }, evolutionLog: { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, efficiencyVerdict: { type: Type.STRING, enum: ['Optimo', 'Regular', 'Critico'] }, efficiencyRationale: { type: Type.STRING }, changes: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { field: { type: Type.STRING }, oldValue: { type: Type.STRING }, newValue: { type: Type.STRING }, comment: { type: Type.STRING } } } } } } } } }); const updateData = JSON.parse(cleanJsonString(response.text || "{}")); const newLog: EvolutionLog = { date: new Date().toISOString(), sourceDocument: input.type === 'pdf' ? "Documento PDF" : "Reporte de Texto", summary: updateData.evolutionLog?.summary || "Actualización manual", changes: updateData.evolutionLog?.changes || [], efficiencyVerdict: updateData.evolutionLog?.efficiencyVerdict, efficiencyRationale: updateData.evolutionLog?.efficiencyRationale }; return { ...currentData, progressPercentage: updateData.progressPercentage || currentData.progressPercentage, spentBudget: updateData.spentBudget || currentData.spentBudget, evolutionHistory: [newLog, ...(currentData.evolutionHistory || [])] }; };
+export const analyzePOTAlignment = async (projectData: ProjectData, pdfBase64: string): Promise<POTAnalysis> => { const prompt = `Analiza si el proyecto "${projectData.projectName}" cumple con el POT adjunto. Identifica restricciones de uso de suelo, zonas de riesgo y cumplimiento normativo.`; const response = await generateWithFallback({ contents: [{ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } }, { text: prompt }], config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { complianceScore: { type: Type.NUMBER }, landUseRestrictions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }, riskZonesIdentified: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } } } } } }); return JSON.parse(cleanJsonString(response.text || "{}")); };
+export const updateProjectWithNewData = async (currentData: ProjectData, input: { type: 'pdf' | 'text', content: string }): Promise<ProjectData> => { const prompt = `ACTUALIZACIÓN DE PROYECTO (AUDITORÍA DE AVANCE). Proyecto Actual: ${JSON.stringify({ name: currentData.projectName, budget: currentData.totalBudget, progress: currentData.progressPercentage })}. Analiza la NUEVA información y determina: Nuevos avances, Cambios en fechas, Log de cambios forense (EvolutionLog). Devuelve los campos actualizados.`; const parts: any[] = [{ text: prompt }]; if (input.type === 'pdf') parts.push({ inlineData: { mimeType: 'application/pdf', data: input.content } }); else parts.push({ text: input.content }); const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: parts, config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { progressPercentage: { type: Type.NUMBER }, spentBudget: { type: Type.NUMBER }, milestoneUpdates: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, progress: { type: Type.NUMBER }, status: { type: Type.STRING } } } }, evolutionLog: { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, efficiencyVerdict: { type: Type.STRING, enum: ['Optimo', 'Regular', 'Critico'] }, efficiencyRationale: { type: Type.STRING }, changes: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { field: { type: Type.STRING }, oldValue: { type: Type.STRING }, newValue: { type: Type.STRING }, comment: { type: Type.STRING } } } } } } } } })); const updateData = JSON.parse(cleanJsonString(response.text || "{}")); const newLog: EvolutionLog = { date: new Date().toISOString(), sourceDocument: input.type === 'pdf' ? "Documento PDF" : "Reporte de Texto", summary: updateData.evolutionLog?.summary || "Actualización manual", changes: updateData.evolutionLog?.changes || [], efficiencyVerdict: updateData.evolutionLog?.efficiencyVerdict, efficiencyRationale: updateData.evolutionLog?.efficiencyRationale }; return { ...currentData, progressPercentage: updateData.progressPercentage || currentData.progressPercentage, spentBudget: updateData.spentBudget || currentData.spentBudget, evolutionHistory: [newLog, ...(currentData.evolutionHistory || [])] }; };
 export const analyzePMBOK7 = async (data: ProjectData): Promise<PMBOKAnalysis> => { const prompt = `Auditoría bajo estándar PMI PMBOK 7. Evalúa los 12 principios para: "${data.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { overallObservation: { type: Type.STRING }, auditDate: { type: Type.STRING }, principles: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, englishName: { type: Type.STRING }, score: { type: Type.NUMBER }, status: { type: Type.STRING }, reasoning: { type: Type.STRING } } } } } }); };
 export const analyzePMBOKPrincipleDeep = async (data: ProjectData, principleName: string): Promise<PMBOKDeepAnalysis> => { const prompt = `Deep Dive PMBOK 7 Principio: "${principleName}". Proyecto: "${data.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { diagnosis: { type: Type.STRING }, strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } }, actionableSteps: { type: Type.ARRAY, items: { type: Type.STRING } }, kpiImpact: { type: Type.STRING }, consequenceSimulation: { type: Type.STRING } } }); };
 
-export const analyzeSocialEcosystem = async (projectData: ProjectData): Promise<SocialEcosystem> => { 
+export const analyzeSocialEcosystem = async (projectData: ProjectData): Promise<SocialEcosystem> => {
     const prompt = `ROL: ANALISTA SOCIOECONÓMICO. PROYECTO: "${projectData.projectName}". 
     TAREA: Generar un mapa de actores detallado y análisis de retorno social.
     OUTPUT JSON: { 
         "directJobs": number, "indirectJobs": number, "beneficiaries": number, "beneficiaryDescription": string, "demographicHighlight": string, "socialReturnScore": number, "socialReturnQuote": string, "socialRisks": string[], 
         "targetPopulation": { "description": string, "characteristics": string[] },
         "actors": [ { "name": string, "role": string, "category": "Executor"|"Control"|"Beneficiario"|"Afectado", "impactLevel": "Alto"|"Medio"|"Bajo", "interest": string } ] 
-    }`; 
-    return generateFast(prompt, { type: Type.OBJECT, properties: { directJobs: { type: Type.NUMBER }, indirectJobs: { type: Type.NUMBER }, beneficiaries: { type: Type.NUMBER }, beneficiaryDescription: { type: Type.STRING }, demographicHighlight: { type: Type.STRING }, socialReturnScore: { type: Type.NUMBER }, socialReturnQuote: { type: Type.STRING }, socialRisks: { type: Type.ARRAY, items: { type: Type.STRING } }, targetPopulation: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, characteristics: { type: Type.ARRAY, items: { type: Type.STRING } } } }, actors: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, role: { type: Type.STRING }, category: { type: Type.STRING, enum: ["Executor", "Control", "Beneficiario", "Afectado"] }, impactLevel: { type: Type.STRING, enum: ["Alto", "Medio", "Bajo"] }, interest: { type: Type.STRING } } } } } }); 
+    }`;
+    return generateFast(prompt, { type: Type.OBJECT, properties: { directJobs: { type: Type.NUMBER }, indirectJobs: { type: Type.NUMBER }, beneficiaries: { type: Type.NUMBER }, beneficiaryDescription: { type: Type.STRING }, demographicHighlight: { type: Type.STRING }, socialReturnScore: { type: Type.NUMBER }, socialReturnQuote: { type: Type.STRING }, socialRisks: { type: Type.ARRAY, items: { type: Type.STRING } }, targetPopulation: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, characteristics: { type: Type.ARRAY, items: { type: Type.STRING } } } }, actors: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, role: { type: Type.STRING }, category: { type: Type.STRING, enum: ["Executor", "Control", "Beneficiario", "Afectado"] }, impactLevel: { type: Type.STRING, enum: ["Alto", "Medio", "Bajo"] }, interest: { type: Type.STRING } } } } } });
 };
 
 export const askProjectQuestion = async (question: string, projectData: ProjectData): Promise<string> => { const context = JSON.stringify({ name: projectData.projectName, budget: projectData.totalBudget, risks: projectData.risks, status: projectData.progressPercentage }); const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Contexto Proyecto: ${context}. Pregunta Usuario: "${question}". Responde como un consultor experto, breve y directo.`, }); return response.text || "No pude generar una respuesta."; };
@@ -433,11 +434,11 @@ export const generateDeepTechnicalReport = async (projectData: ProjectData, cont
     NOTA: Sé extremadamente técnico, crítico y profesional. Usa vocabulario de ingeniería forense.
     NO incluyas <html> o <body> tags, solo el contenido del informe div wrapper.
     `;
-    
+
     const response = await generateWithFallback({
-        model: 'gemini-3-pro-preview', 
+        model: 'gemini-3-pro-preview',
         contents: prompt
     });
-    
+
     return response.text || "<h1>Error generando reporte holístico</h1>";
 };
