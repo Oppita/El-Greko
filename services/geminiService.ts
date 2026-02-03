@@ -218,7 +218,7 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
     try {
         // Use flash-preview for speed and reliability on large documents
         const response = await generateWithFallback({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: parts,
             config: {
                 responseMimeType: 'application/json',
@@ -253,7 +253,7 @@ export const analyzeProject = async (input: AnalysisInput): Promise<ProjectData>
 export const searchProjectInfo = async (projectData: ProjectData): Promise<SearchResult> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash',
             contents: `Busca noticias recientes, controversias, hallazgos fiscales o denuncias sobre el proyecto: "${projectData.projectName}" contratista "${projectData.contractor}" en ${projectData.location.municipality}. Resumen ejecutivo.`,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -443,8 +443,8 @@ export const analyzeSocialEcosystem = async (projectData: ProjectData): Promise<
     return generateFast(prompt, { type: Type.OBJECT, properties: { directJobs: { type: Type.NUMBER }, indirectJobs: { type: Type.NUMBER }, beneficiaries: { type: Type.NUMBER }, beneficiaryDescription: { type: Type.STRING }, demographicHighlight: { type: Type.STRING }, socialReturnScore: { type: Type.NUMBER }, socialReturnQuote: { type: Type.STRING }, socialRisks: { type: Type.ARRAY, items: { type: Type.STRING } }, targetPopulation: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, characteristics: { type: Type.ARRAY, items: { type: Type.STRING } } } }, actors: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, role: { type: Type.STRING }, category: { type: Type.STRING, enum: ["Executor", "Control", "Beneficiario", "Afectado"] }, impactLevel: { type: Type.STRING, enum: ["Alto", "Medio", "Bajo"] }, interest: { type: Type.STRING } } } } } });
 };
 
-export const askProjectQuestion = async (question: string, projectData: ProjectData): Promise<string> => { const context = JSON.stringify({ name: projectData.projectName, budget: projectData.totalBudget, risks: projectData.risks, status: projectData.progressPercentage }); const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Contexto Proyecto: ${context}. Pregunta Usuario: "${question}". Responde como un consultor experto, breve y directo.`, }); return response.text || "No pude generar una respuesta."; };
-export const generateMitigationSuggestion = async (risk: RiskItem, projectData: ProjectData): Promise<string> => { const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Genera una estrategia de mitigación detallada (ISO 31000) para el riesgo: "${risk.risk}" (Impacto: ${risk.impact}). Proyecto: ${projectData.projectName}.`, }); return response.text || "Error generando mitigación."; };
+export const askProjectQuestion = async (question: string, projectData: ProjectData): Promise<string> => { const context = JSON.stringify({ name: projectData.projectName, budget: projectData.totalBudget, risks: projectData.risks, status: projectData.progressPercentage }); const response = await ai.models.generateContent({ model: 'gemini-1.5-flash', contents: `Contexto Proyecto: ${context}. Pregunta Usuario: "${question}". Responde como un consultor experto, breve y directo.`, }); return response.text || "No pude generar una respuesta."; };
+export const generateMitigationSuggestion = async (risk: RiskItem, projectData: ProjectData): Promise<string> => { const response = await ai.models.generateContent({ model: 'gemini-1.5-flash', contents: `Genera una estrategia de mitigación detallada (ISO 31000) para el riesgo: "${risk.risk}" (Impacto: ${risk.impact}). Proyecto: ${projectData.projectName}.`, }); return response.text || "Error generando mitigación."; };
 export const analyzeGrekoCronos = async (data: ProjectData): Promise<GrekoCronosDeepAnalysis> => { const prompt = `Análisis de Cronograma Greko Cronos para "${data.projectName}". Detecta desviaciones y sugiere aceleración.`; return generateFast(prompt, { type: Type.OBJECT, properties: { analysisDate: { type: Type.STRING }, projectedCompletionDate: { type: Type.STRING }, daysVariance: { type: Type.NUMBER }, timelineDiagnosis: { type: Type.STRING }, rootCauses: { type: Type.ARRAY, items: { type: Type.STRING } }, acceleratorStrategies: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { strategyName: { type: Type.STRING }, description: { type: Type.STRING }, impactDays: { type: Type.NUMBER } } } }, impactOnBudget: { type: Type.STRING } } }); };
 
 // NEW: HOLISTIC REPORT GENERATOR
@@ -508,7 +508,7 @@ export const generateDeepTechnicalReport = async (projectData: ProjectData, cont
     `;
 
     const response = await generateWithFallback({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-1.5-pro',
         contents: prompt
     });
 
