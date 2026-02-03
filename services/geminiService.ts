@@ -356,7 +356,79 @@ export const analyzeActivityDeep = async (milestone: ProjectMilestone, context: 
 export const analyzeKnowledgeDeep = async (projectData: ProjectData): Promise<KnowledgeDeepAnalysis> => { const prompt = `Análisis de Conocimiento del Riesgo (Ley 1523) para "${projectData.projectName}". Evalúa estudios técnicos, vacíos de información y alternativas de modelamiento.`; return generateFast(prompt, { type: Type.OBJECT, properties: { overallKnowledgeScore: { type: Type.NUMBER }, riskCharacterization: { type: Type.STRING }, criticalDataGaps: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { gap: { type: Type.STRING }, criticality: { type: Type.STRING }, impact: { type: Type.STRING }, actionPlan: { type: Type.STRING } } } }, modelingAlternatives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, type: { type: Type.STRING }, estimatedCost: { type: Type.STRING } } } }, monitoringAlternatives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING } } } } } }); };
 export const analyzeManagementDeep = async (projectData: ProjectData): Promise<ManagementDeepAnalysis> => { const prompt = `Evaluación de Preparación para Respuesta a Desastres en el proyecto "${projectData.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { preparednessScore: { type: Type.NUMBER }, contingencyPlanAudit: { type: Type.STRING }, evacuationProtocols: { type: Type.OBJECT, properties: { strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } } } }, commandChain: { type: Type.OBJECT, properties: { clarity: { type: Type.STRING }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } } } }, responseLogistics: { type: Type.OBJECT, properties: { strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } } } }, communicationSystemsAudit: { type: Type.STRING }, actionableRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } } } }); };
 export const analyzePOTAlignment = async (projectData: ProjectData, pdfBase64: string): Promise<POTAnalysis> => { const prompt = `Analiza si el proyecto "${projectData.projectName}" cumple con el POT adjunto. Identifica restricciones de uso de suelo, zonas de riesgo y cumplimiento normativo.`; const response = await generateWithFallback({ contents: [{ inlineData: { mimeType: 'application/pdf', data: pdfBase64 } }, { text: prompt }], config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { complianceScore: { type: Type.NUMBER }, landUseRestrictions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }, riskZonesIdentified: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { issue: { type: Type.STRING }, mitigation: { type: Type.STRING } } } } } } } }); return JSON.parse(cleanJsonString(response.text || "{}")); };
-export const updateProjectWithNewData = async (currentData: ProjectData, input: { type: 'pdf' | 'text', content: string }): Promise<ProjectData> => { const prompt = `ACTUALIZACIÓN DE PROYECTO (AUDITORÍA DE AVANCE). Proyecto Actual: ${JSON.stringify({ name: currentData.projectName, budget: currentData.totalBudget, progress: currentData.progressPercentage })}. Analiza la NUEVA información y determina: Nuevos avances, Cambios en fechas, Log de cambios forense (EvolutionLog). Devuelve los campos actualizados.`; const parts: any[] = [{ text: prompt }]; if (input.type === 'pdf') parts.push({ inlineData: { mimeType: 'application/pdf', data: input.content } }); else parts.push({ text: input.content }); const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: parts, config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { progressPercentage: { type: Type.NUMBER }, spentBudget: { type: Type.NUMBER }, milestoneUpdates: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { description: { type: Type.STRING }, progress: { type: Type.NUMBER }, status: { type: Type.STRING } } } }, evolutionLog: { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, efficiencyVerdict: { type: Type.STRING, enum: ['Optimo', 'Regular', 'Critico'] }, efficiencyRationale: { type: Type.STRING }, changes: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { field: { type: Type.STRING }, oldValue: { type: Type.STRING }, newValue: { type: Type.STRING }, comment: { type: Type.STRING } } } } } } } } })); const updateData = JSON.parse(cleanJsonString(response.text || "{}")); const newLog: EvolutionLog = { date: new Date().toISOString(), sourceDocument: input.type === 'pdf' ? "Documento PDF" : "Reporte de Texto", summary: updateData.evolutionLog?.summary || "Actualización manual", changes: updateData.evolutionLog?.changes || [], efficiencyVerdict: updateData.evolutionLog?.efficiencyVerdict, efficiencyRationale: updateData.evolutionLog?.efficiencyRationale }; return { ...currentData, progressPercentage: updateData.progressPercentage || currentData.progressPercentage, spentBudget: updateData.spentBudget || currentData.spentBudget, evolutionHistory: [newLog, ...(currentData.evolutionHistory || [])] }; };
+export const updateProjectWithNewData = async (currentData: ProjectData, input: { type: 'pdf' | 'text', content: string }): Promise<ProjectData> => {
+    const prompt = `ACTUALIZACIÓN DE PROYECTO (AUDITORÍA DE AVANCE). Proyecto Actual: ${JSON.stringify({ name: currentData.projectName, budget: currentData.totalBudget, progress: currentData.progressPercentage })}. Analiza la NUEVA información y determina: Nuevos avances, Cambios en fechas, Log de cambios forense (EvolutionLog). Devuelve los campos actualizados.`;
+    const parts: any[] = [{ text: prompt }];
+    if (input.type === 'pdf') {
+        parts.push({ inlineData: { mimeType: 'application/pdf', data: input.content } });
+    } else {
+        parts.push({ text: input.content });
+    }
+
+    // Usando gemini-2.0-flash que es el modelo actual recomendado para el nuevo SDK
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: parts,
+        config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    progressPercentage: { type: Type.NUMBER },
+                    spentBudget: { type: Type.NUMBER },
+                    milestoneUpdates: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                description: { type: Type.STRING },
+                                progress: { type: Type.NUMBER },
+                                status: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    evolutionLog: {
+                        type: Type.OBJECT,
+                        properties: {
+                            summary: { type: Type.STRING },
+                            efficiencyVerdict: { type: Type.STRING, enum: ['Optimo', 'Regular', 'Critico'] },
+                            efficiencyRationale: { type: Type.STRING },
+                            changes: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        field: { type: Type.STRING },
+                                        oldValue: { type: Type.STRING },
+                                        newValue: { type: Type.STRING },
+                                        comment: { type: Type.STRING }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    const updateData = JSON.parse(cleanJsonString(response.text || "{}"));
+    const newLog: EvolutionLog = {
+        date: new Date().toISOString(),
+        sourceDocument: input.type === 'pdf' ? "Documento PDF" : "Reporte de Texto",
+        summary: updateData.evolutionLog?.summary || "Actualización manual",
+        changes: updateData.evolutionLog?.changes || [],
+        efficiencyVerdict: updateData.evolutionLog?.efficiencyVerdict,
+        efficiencyRationale: updateData.evolutionLog?.efficiencyRationale
+    };
+
+    return {
+        ...currentData,
+        progressPercentage: updateData.progressPercentage || currentData.progressPercentage,
+        spentBudget: updateData.spentBudget || currentData.spentBudget,
+        evolutionHistory: [newLog, ...(currentData.evolutionHistory || [])]
+    };
+};
 export const analyzePMBOK7 = async (data: ProjectData): Promise<PMBOKAnalysis> => { const prompt = `Auditoría bajo estándar PMI PMBOK 7. Evalúa los 12 principios para: "${data.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { overallObservation: { type: Type.STRING }, auditDate: { type: Type.STRING }, principles: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, englishName: { type: Type.STRING }, score: { type: Type.NUMBER }, status: { type: Type.STRING }, reasoning: { type: Type.STRING } } } } } }); };
 export const analyzePMBOKPrincipleDeep = async (data: ProjectData, principleName: string): Promise<PMBOKDeepAnalysis> => { const prompt = `Deep Dive PMBOK 7 Principio: "${principleName}". Proyecto: "${data.projectName}".`; return generateFast(prompt, { type: Type.OBJECT, properties: { diagnosis: { type: Type.STRING }, strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } }, actionableSteps: { type: Type.ARRAY, items: { type: Type.STRING } }, kpiImpact: { type: Type.STRING }, consequenceSimulation: { type: Type.STRING } } }); };
 
