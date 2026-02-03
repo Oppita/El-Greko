@@ -72,13 +72,13 @@ async function generateWithFallback(params: { contents: any, config?: any, model
 
     // Primary attempt
     try {
-        return await makeRequest(params.model || 'gemini-3-flash-preview');
+        return await makeRequest(params.model || 'gemini-1.5-flash');
     } catch (error: any) {
         console.warn(`Primary model ${params.model} failed, retrying with fallback...`, error);
 
         // Fallback attempt (switch to flash if pro failed, or retry same)
         try {
-            const fallbackModel = params.model?.includes('pro') ? 'gemini-3-flash-preview' : 'gemini-3-flash-preview';
+            const fallbackModel = 'gemini-1.5-flash';
             return await makeRequest(fallbackModel);
         } catch (retryError) {
             console.error("Gemini API Error (Retry failed):", retryError);
@@ -89,7 +89,7 @@ async function generateWithFallback(params: { contents: any, config?: any, model
 
 async function generateFast(prompt: string, schema?: Schema, systemInstruction?: string) {
     const response = await generateWithFallback({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
             responseMimeType: 'application/json',
@@ -367,7 +367,7 @@ export const updateProjectWithNewData = async (currentData: ProjectData, input: 
 
     // Usando gemini-2.0-flash que es el modelo actual recomendado para el nuevo SDK
     const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: parts,
         config: {
             responseMimeType: 'application/json',
