@@ -1,5 +1,17 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import type { Schema } from "@google/genai";
+
+// Define Type helper to match the code usage but unrelated to the SDK export
+const Type = {
+    STRING: "STRING",
+    NUMBER: "NUMBER",
+    INTEGER: "INTEGER",
+    BOOLEAN: "BOOLEAN",
+    ARRAY: "ARRAY",
+    OBJECT: "OBJECT"
+} as const;
+
 import {
     ProjectData, INITIAL_PROJECT_DATA, RiskItem, InsurancePolicy, Stakeholder, Bottleneck,
     POTAnalysis, PMBOKAnalysis, PMBOKDeepAnalysis, FinancialProtectionDeepAnalysis,
